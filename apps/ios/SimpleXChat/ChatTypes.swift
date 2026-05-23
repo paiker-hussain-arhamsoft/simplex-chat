@@ -1358,7 +1358,6 @@ public func toGroupPreferences(_ fullPreferences: FullGroupPreferences) -> Group
 
 public struct GroupPreference: Codable, Equatable, Hashable {
     public var enable: GroupFeatureEnabled
-    public var role: GroupMemberRole?
 
     public var on: Bool {
         enable == .on
@@ -1376,9 +1375,8 @@ public struct GroupPreference: Codable, Equatable, Hashable {
         }
     }
 
-    public init(enable: GroupFeatureEnabled, role: GroupMemberRole? = nil) {
+    public init(enable: GroupFeatureEnabled) {
         self.enable = enable
-        self.role = role
     }
 }
 

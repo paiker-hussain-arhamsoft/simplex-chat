@@ -1,6 +1,5 @@
 package chat.simplex.common.views.chatlist
 
-import LocalCardScreen
 import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -573,7 +572,7 @@ private fun ChatListToolbar(userPickerState: MutableStateFlow<AnimatedViewState>
     navigationButton = {
       if (chatModel.users.isEmpty() && !chatModel.desktopNoUserNoRemote) {
         NavigationButtonMenu {
-          ModalManager.start.showModalCloseable(cardScreen = true) { close ->
+          ModalManager.start.showModalCloseable { close ->
             SettingsView(chatModel, setPerformLA, close)
           }
         }
@@ -855,8 +854,8 @@ enum class ScrollDirection {
 @Composable
 fun BoxScope.StatusBarBackground() {
   if (appPlatform.isAndroid) {
-    val bg = if (LocalCardScreen.current) canvasColorForCurrentTheme() else MaterialTheme.colors.background
-    Box(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(bg.copy(0.88f)))
+    val finalColor = MaterialTheme.colors.background.copy(0.88f)
+    Box(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(finalColor))
   }
 }
 
