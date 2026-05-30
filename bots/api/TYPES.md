@@ -995,6 +995,9 @@ NoRcvFileUser:
 UserUnknown:
 - type: "userUnknown"
 
+ActiveUserExists:
+- type: "activeUserExists"
+
 UserExists:
 - type: "userExists"
 - contactName: string
@@ -2890,7 +2893,6 @@ SubscribeError:
 - profile: [Profile](#profile)?
 - pastTimestamp: bool
 - userChatRelay: bool
-- clientService: bool
 
 
 ---
@@ -4125,9 +4127,8 @@ Handshake:
 - sendRcptsSmallGroups: bool
 - autoAcceptMemberContacts: bool
 - userMemberProfileUpdatedAt: UTCTime?
-- userChatRelay: bool
-- clientService: bool
 - uiThemes: [UIThemeEntityOverrides](#uithemeentityoverrides)?
+- userChatRelay: bool
 
 
 ---

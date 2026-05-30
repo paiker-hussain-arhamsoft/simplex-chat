@@ -1,11 +1,10 @@
 package chat.simplex.common.views.usersettings
 
 import SectionBottomSpacer
-import SectionItemView
 import SectionDividerSpaced
+import SectionItemView
 import SectionTextFooter
 import SectionView
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.*
 import androidx.compose.runtime.*
@@ -172,7 +171,7 @@ fun PrivacySettingsView(
       }
 
       if (!chatModel.desktopNoUserNoRemote) {
-        SectionDividerSpaced()
+        SectionDividerSpaced(maxTopPadding = true)
         ContacRequestsFromGroupsSection(
           currentUser = currentUser,
           setAutoAcceptGrpDirectInvs = { enable ->
@@ -180,7 +179,7 @@ fun PrivacySettingsView(
           }
         )
 
-        SectionDividerSpaced()
+        SectionDividerSpaced(maxTopPadding = true)
         DeliveryReceiptsSection(
           currentUser = currentUser,
           setOrAskSendReceiptsContacts = { enable ->
@@ -620,7 +619,7 @@ fun SimplexLockView(
       }
       if (performLA.value && laMode.value == LAMode.PASSCODE) {
         SectionDividerSpaced()
-        SectionView(stringResource(MR.strings.self_destruct_passcode)) {
+        SectionView(stringResource(MR.strings.self_destruct_passcode).uppercase()) {
           val openInfo = {
             ModalManager.start.showModal {
               SelfDestructInfoView()
