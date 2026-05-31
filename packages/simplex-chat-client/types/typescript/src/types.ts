@@ -994,6 +994,7 @@ export type ChatErrorType =
   | ChatErrorType.NoSndFileUser
   | ChatErrorType.NoRcvFileUser
   | ChatErrorType.UserUnknown
+  | ChatErrorType.ActiveUserExists
   | ChatErrorType.UserExists
   | ChatErrorType.ChatRelayExists
   | ChatErrorType.DifferentActiveUser
@@ -1071,6 +1072,7 @@ export namespace ChatErrorType {
     | "noSndFileUser"
     | "noRcvFileUser"
     | "userUnknown"
+    | "activeUserExists"
     | "userExists"
     | "chatRelayExists"
     | "differentActiveUser"
@@ -1166,6 +1168,10 @@ export namespace ChatErrorType {
 
   export interface UserUnknown extends Interface {
     type: "userUnknown"
+  }
+
+  export interface ActiveUserExists extends Interface {
+    type: "activeUserExists"
   }
 
   export interface UserExists extends Interface {
@@ -2770,6 +2776,7 @@ export interface GroupRelay {
   userChatRelay: UserChatRelay
   relayStatus: RelayStatus
   relayLink?: string
+  relayCap: RelayCapabilities
 }
 
 export type GroupRootKey = GroupRootKey.Private | GroupRootKey.Public
@@ -3189,7 +3196,6 @@ export interface NewUser {
   profile?: Profile
   pastTimestamp: boolean
   userChatRelay: boolean
-  clientService: boolean
 }
 
 export interface NoteFolder {
@@ -3351,6 +3357,13 @@ export namespace ProxyError {
   }
 }
 
+export interface PublicGroupAccess {
+  groupWebPage?: string
+  groupDomain?: string
+  domainWebPage: boolean
+  allowEmbedding: boolean
+}
+
 export interface PublicGroupData {
   publicMemberCount: number // int64
 }
@@ -3359,6 +3372,7 @@ export interface PublicGroupProfile {
   groupType: GroupType
   groupLink: string
   publicGroupId: string
+  publicGroupAccess?: PublicGroupAccess
 }
 
 export type RCErrorType = 
@@ -3745,6 +3759,10 @@ export namespace RcvMsgError {
     type: "parseError"
     parseError: string
   }
+}
+
+export interface RelayCapabilities {
+  baseWebUrl?: string
 }
 
 export interface RelayProfile {
@@ -4826,9 +4844,8 @@ export interface User {
   sendRcptsSmallGroups: boolean
   autoAcceptMemberContacts: boolean
   userMemberProfileUpdatedAt?: string // ISO-8601 timestamp
-  userChatRelay: boolean
-  clientService: boolean
   uiThemes?: UIThemeEntityOverrides
+  userChatRelay: boolean
 }
 
 export interface UserChatRelay {

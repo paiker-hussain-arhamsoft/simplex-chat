@@ -539,7 +539,7 @@ handleRemoteCommand execCC encryption remoteOutputQ HTTP2Request {request, reqBo
         Left e -> eToView' $ ChatErrorRemoteCtrl $ RCEProtocolError e
 
 takeRCStep :: RCStepTMVar a -> CM a
-takeRCStep = liftError' (chatErrorAgent . RCP) . atomically . takeTMVar
+takeRCStep = liftError' (\e -> ChatErrorAgent {agentError = RCP e, agentConnId = AgentConnId "", connectionEntity_ = Nothing}) . atomically . takeTMVar
 
 type GetChunk = Int -> IO ByteString
 

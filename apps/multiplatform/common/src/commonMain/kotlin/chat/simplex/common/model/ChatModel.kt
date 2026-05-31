@@ -697,15 +697,15 @@ object ChatModel {
     }
 
     suspend fun removeMemberItems(rhId: Long?, removedMember: GroupMember, byMember: GroupMember, groupInfo: GroupInfo) {
-      fun isRemovedMemberItem(item: ChatItem): Boolean = when {
-        item.chatDir is CIDirection.GroupSnd -> removedMember.groupMemberId == groupInfo.membership.groupMemberId
-        item.chatDir is CIDirection.GroupRcv -> item.chatDir.groupMember.groupMemberId == removedMember.groupMemberId
-        else -> false
-      }
-      fun markedUpdatedItem(item: ChatItem): ChatItem? {
-        if (!isRemovedMemberItem(item)) return null
+      fun removedUpdatedItem(item: ChatItem): ChatItem? {
+        val newContent = when {
+          item.chatDir is CIDirection.GroupSnd && removedMember.groupMemberId == groupInfo.membership.groupMemberId -> CIContent.SndModerated
+          item.chatDir is CIDirection.GroupRcv && item.chatDir.groupMember.groupMemberId == removedMember.groupMemberId -> CIContent.RcvModerated
+          else -> return null
+        }
         val updatedItem = item.copy(
-          meta = item.meta.copy(itemDeleted = CIDeleted.Moderated(Clock.System.now(), byGroupMember = byMember))
+          meta = item.meta.copy(itemDeleted = CIDeleted.Moderated(Clock.System.now(), byGroupMember = byMember)),
+          content = if (groupInfo.fullGroupPreferences.fullDelete.on) newContent else item.content
         )
         if (item.isActiveReport) {
           decreaseGroupReportsCounter(rhId, groupInfo.id)
@@ -713,52 +713,21 @@ object ChatModel {
         return updatedItem
       }
 
-      // Mirrors backend groupFeatureMemberAllowed: fullDelete may be role-gated in business groups.
-      val fullDeletePref = groupInfo.fullGroupPreferences.fullDelete
-      val fullDelete = fullDeletePref.on &&
-        byMember.memberRole >= (fullDeletePref.role ?: GroupMemberRole.Observer)
       val cInfo = ChatInfo.Group(groupInfo, groupChatScope = null) // TODO [knocking] review
       if (chatId.value == groupInfo.id) {
-        if (fullDelete) {
-          for (item in chatItems.value) {
-            if (isRemovedMemberItem(item)) {
-              if (item.isRcvNew) {
-                decreaseCounterInPrimaryContext(rhId, groupInfo.id)
-              }
-              if (item.isActiveReport) {
-                decreaseGroupReportsCounter(rhId, groupInfo.id)
-              }
-            }
-          }
-          chatItems.removeAllAndNotify { item ->
-            val remove = isRemovedMemberItem(item)
-            if (remove) AudioPlayer.stop(item)
-            remove
-          }
-        } else {
-          for (i in 0 until chatItems.value.size) {
-            val updatedItem = markedUpdatedItem(chatItems.value[i])
-            if (updatedItem != null) {
-              updateChatItem(cInfo, updatedItem, atIndex = i)
-            }
+        for (i in 0 until chatItems.value.size) {
+          val updatedItem = removedUpdatedItem(chatItems.value[i])
+          if (updatedItem != null) {
+            updateChatItem(cInfo, updatedItem, atIndex = i)
           }
         }
       } else {
         val i = getChatIndex(rhId, groupInfo.id)
-        if (i >= 0) {
-          val chat = chats[i]
-          if (chat.chatItems.isNotEmpty()) {
-            val preview = chat.chatItems[0]
-            if (isRemovedMemberItem(preview)) {
-              if (fullDelete) {
-                chats.value[i] = chat.copy(chatItems = listOf(ChatItem.deletedItemDummy))
-              } else {
-                val updatedItem = markedUpdatedItem(preview)
-                if (updatedItem != null) {
-                  chats.value[i] = chat.copy(chatItems = listOf(updatedItem))
-                }
-              }
-            }
+        val chat = chats[i]
+        if (chat.chatItems.isNotEmpty()) {
+          val updatedItem = removedUpdatedItem(chat.chatItems[0])
+          if (updatedItem != null) {
+            chats.value[i] = chat.copy(chatItems = listOf(updatedItem))
           }
         }
       }
@@ -2241,10 +2210,24 @@ object GroupTypeSerializer : KSerializer<GroupType> {
 }
 
 @Serializable
+data class PublicGroupAccess(
+  val groupWebPage: String? = null,
+  val groupDomain: String? = null,
+  val domainWebPage: Boolean = false,
+  val allowEmbedding: Boolean = false
+)
+
+@Serializable
+data class RelayCapabilities(
+  val baseWebUrl: String? = null
+)
+
+@Serializable
 data class PublicGroupProfile(
   val groupType: GroupType,
   val groupLink: String,
-  val publicGroupId: String
+  val publicGroupId: String,
+  val publicGroupAccess: PublicGroupAccess? = null
 )
 
 @Serializable
@@ -2368,7 +2351,8 @@ data class GroupRelay(
   val groupMemberId: Long,
   val userChatRelay: UserChatRelay,
   val relayStatus: RelayStatus,
-  val relayLink: String? = null
+  val relayLink: String? = null,
+  val relayCap: RelayCapabilities
 ) {
   val id: Long get() = groupRelayId
 }

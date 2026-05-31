@@ -34,7 +34,6 @@ import Data.ByteString.Char8 (ByteString)
 import Data.Int (Int64)
 import qualified Data.List.NonEmpty as L
 import Data.Text (Text)
-import qualified Data.Text as T
 import Data.Time.Clock (UTCTime, getCurrentTime)
 import Simplex.Chat.Delivery
 import Simplex.Chat.Protocol hiding (Binary)
@@ -46,7 +45,6 @@ import Simplex.Messaging.Agent.Store.DB (Binary (..), BoolInt (..))
 import qualified Simplex.Messaging.Agent.Store.DB as DB
 import Simplex.Messaging.Encoding (smpDecode)
 import Simplex.Messaging.Util (eitherToMaybe, firstRow')
-import Text.Read (readMaybe)
 #if defined(dbPostgres)
 import Database.PostgreSQL.Simple (In (..), Only (..), (:.) (..))
 import Database.PostgreSQL.Simple.SqlQQ (sql)
@@ -247,8 +245,8 @@ deleteDoneDeliveryTasks db createdAtCutoff = do
     |]
     (createdAtCutoff, DTSProcessed, DTSError)
 
-createMsgDeliveryJob :: DB.Connection -> GroupInfo -> DeliveryJobScope -> [GroupMemberId] -> ByteString -> IO ()
-createMsgDeliveryJob db gInfo jobScope senderGMIds body = do
+createMsgDeliveryJob :: DB.Connection -> GroupInfo -> DeliveryJobScope -> Maybe GroupMemberId -> ByteString -> IO ()
+createMsgDeliveryJob db gInfo jobScope singleSenderGMId_ body = do
   currentTs <- getCurrentTime
   DB.execute
     db
@@ -256,17 +254,12 @@ createMsgDeliveryJob db gInfo jobScope senderGMIds body = do
       INSERT INTO delivery_jobs (
         group_id,
         worker_scope, job_scope_spec_tag, job_scope_include_pending, job_scope_support_gm_id,
-        sender_group_member_ids, body, job_status, created_at, updated_at
+        single_sender_group_member_id, body, job_status, created_at, updated_at
       ) VALUES (?,?,?,?,?,?,?,?,?,?)
     |]
-    ((Only groupId) :. jobScopeRow_ jobScope :. (senderColumn, Binary body, DJSPending, currentTs, currentTs))
+    ((Only groupId) :. jobScopeRow_ jobScope :. (singleSenderGMId_, Binary body, DJSPending, currentTs, currentTs))
   where
     GroupInfo {groupId} = gInfo
-    -- NULL ↔ []; non-empty list ↔ comma-separated decimal Int64s.
-    senderColumn :: Maybe Text
-    senderColumn
-      | null senderGMIds = Nothing
-      | otherwise = Just $ T.intercalate "," $ map (T.pack . show) senderGMIds
 
 getPendingDeliveryJobScopes :: DB.Connection -> IO [DeliveryWorkerKey]
 getPendingDeliveryJobScopes db =
@@ -279,7 +272,7 @@ getPendingDeliveryJobScopes db =
     |]
     (Only DJSPending)
 
-type MessageDeliveryJobRow = (Only Int64) :. DeliveryJobScopeRow :. (Maybe Text, Binary ByteString, Maybe GroupMemberId)
+type MessageDeliveryJobRow = (Only Int64) :. DeliveryJobScopeRow :. (Maybe GroupMemberId, Binary ByteString, Maybe GroupMemberId)
 
 getNextDeliveryJob :: DB.Connection -> DeliveryWorkerKey -> IO (Either StoreError (Maybe MessageDeliveryJob))
 getNextDeliveryJob db deliveryKey = do
@@ -309,26 +302,17 @@ getNextDeliveryJob db deliveryKey = do
             SELECT
               delivery_job_id,
               worker_scope, job_scope_spec_tag, job_scope_include_pending, job_scope_support_gm_id,
-              sender_group_member_ids, body, cursor_group_member_id
+              single_sender_group_member_id, body, cursor_group_member_id
             FROM delivery_jobs
             WHERE delivery_job_id = ?
           |]
           (Only jobId)
       where
         toDeliveryJob :: MessageDeliveryJobRow -> Either StoreError MessageDeliveryJob
-        toDeliveryJob ((Only jobId') :. jobScopeRow :. (senderGMIdsText_, Binary body, cursorGMId_)) = do
-          jobScope <- maybe (Left $ SEInvalidDeliveryJob jobId') Right $ toJobScope_ jobScopeRow
-          -- NULL or empty string means []; otherwise the value must parse
-          -- as a comma-separated decimal Int64 list. An unparseable
-          -- segment surfaces as job error rather than silent degradation.
-          senderGMIds <- case senderGMIdsText_ of
-            Nothing -> Right []
-            Just t -> maybe (Left $ SEInvalidDeliveryJob jobId') Right $ parseSenderGMIds t
-          Right $ MessageDeliveryJob {jobId = jobId', jobScope, senderGMIds, body, cursorGMId_}
-        parseSenderGMIds :: Text -> Maybe [GroupMemberId]
-        parseSenderGMIds t
-          | T.null t = Just []
-          | otherwise = traverse (readMaybe . T.unpack) (T.splitOn "," t)
+        toDeliveryJob ((Only jobId') :. jobScopeRow :. (singleSenderGMId_, Binary body, cursorGMId_)) =
+          case toJobScope_ jobScopeRow of
+            Just jobScope -> Right $ MessageDeliveryJob {jobId = jobId', jobScope, singleSenderGMId_, body, cursorGMId_}
+            Nothing -> Left $ SEInvalidDeliveryJob jobId'
     markJobFailed :: Int64 -> IO ()
     markJobFailed jobId =
       DB.execute db "UPDATE delivery_jobs SET failed = 1 where delivery_job_id = ?" (Only jobId)

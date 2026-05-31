@@ -149,8 +149,7 @@ fun ChatRelayView(
           text = generalGetString(MR.strings.check_relay_address)
         )
       }
-    },
-    cardScreen = true,
+    }
   ) {
     ChatRelayLayout(
       relayToEdit,
@@ -183,7 +182,7 @@ private fun ChatRelayLayout(
 
 @Composable
 private fun PresetRelay(relay: MutableState<UserChatRelay>, testing: MutableState<Boolean>) {
-  SectionView(stringResource(MR.strings.preset_relay_address)) {
+  SectionView(stringResource(MR.strings.preset_relay_address).uppercase()) {
     SelectionContainer {
       Text(
         relay.value.address,
@@ -193,7 +192,7 @@ private fun PresetRelay(relay: MutableState<UserChatRelay>, testing: MutableStat
     }
   }
   SectionDividerSpaced()
-  SectionView(stringResource(MR.strings.preset_relay_name)) {
+  SectionView(stringResource(MR.strings.preset_relay_name).uppercase()) {
     SectionItemView {
       Text(relay.value.displayName)
     }
@@ -292,7 +291,7 @@ private fun UseRelaySection(
   testing: MutableState<Boolean>
 ) {
   val scope = rememberCoroutineScope()
-  SectionView(stringResource(MR.strings.use_relay)) {
+  SectionView(stringResource(MR.strings.use_relay).uppercase()) {
     SectionItemViewSpaceBetween(
       click = {
         testing.value = true
@@ -378,7 +377,7 @@ fun ModalData.NewChatRelayView(
 
   ModalView(close = {
     addChatRelay(relayToEdit.value, userServers, serverErrors, serverWarnings, rhId, close)
-  }, cardScreen = true) {
+  }) {
     NewChatRelayLayout(relayToEdit)
   }
 }

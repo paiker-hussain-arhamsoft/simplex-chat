@@ -146,6 +146,7 @@ This file is generated automatically.
 - [Profile](#profile)
 - [ProxyClientError](#proxyclienterror)
 - [ProxyError](#proxyerror)
+- [PublicGroupAccess](#publicgroupaccess)
 - [PublicGroupData](#publicgroupdata)
 - [PublicGroupProfile](#publicgroupprofile)
 - [RCErrorType](#rcerrortype)
@@ -157,6 +158,7 @@ This file is generated automatically.
 - [RcvFileTransfer](#rcvfiletransfer)
 - [RcvGroupEvent](#rcvgroupevent)
 - [RcvMsgError](#rcvmsgerror)
+- [RelayCapabilities](#relaycapabilities)
 - [RelayProfile](#relayprofile)
 - [RelayStatus](#relaystatus)
 - [ReportReason](#reportreason)
@@ -995,6 +997,9 @@ NoRcvFileUser:
 
 UserUnknown:
 - type: "userUnknown"
+
+ActiveUserExists:
+- type: "activeUserExists"
 
 UserExists:
 - type: "userExists"
@@ -2496,6 +2501,7 @@ UpdateRequired:
 - userChatRelay: [UserChatRelay](#userchatrelay)
 - relayStatus: [RelayStatus](#relaystatus)
 - relayLink: string?
+- relayCap: [RelayCapabilities](#relaycapabilities)
 
 
 ---
@@ -2891,7 +2897,6 @@ SubscribeError:
 - profile: [Profile](#profile)?
 - pastTimestamp: bool
 - userChatRelay: bool
-- clientService: bool
 
 
 ---
@@ -3068,6 +3073,17 @@ NO_SESSION:
 
 ---
 
+## PublicGroupAccess
+
+**Record type**:
+- groupWebPage: string?
+- groupDomain: string?
+- domainWebPage: bool
+- allowEmbedding: bool
+
+
+---
+
 ## PublicGroupData
 
 **Record type**:
@@ -3082,6 +3098,7 @@ NO_SESSION:
 - groupType: [GroupType](#grouptype)
 - groupLink: string
 - publicGroupId: string
+- publicGroupAccess: [PublicGroupAccess](#publicgroupaccess)?
 
 
 ---
@@ -3337,6 +3354,14 @@ Dropped:
 ParseError:
 - type: "parseError"
 - parseError: string
+
+
+---
+
+## RelayCapabilities
+
+**Record type**:
+- baseWebUrl: string?
 
 
 ---
@@ -4134,9 +4159,8 @@ Handshake:
 - sendRcptsSmallGroups: bool
 - autoAcceptMemberContacts: bool
 - userMemberProfileUpdatedAt: UTCTime?
-- userChatRelay: bool
-- clientService: bool
 - uiThemes: [UIThemeEntityOverrides](#uithemeentityoverrides)?
+- userChatRelay: bool
 
 
 ---

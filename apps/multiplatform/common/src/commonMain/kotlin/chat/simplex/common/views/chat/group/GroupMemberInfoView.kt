@@ -2,12 +2,12 @@ package chat.simplex.common.views.chat.group
 
 import InfoRow
 import SectionBottomSpacer
-import SectionItemView
 import SectionDividerSpaced
+import SectionItemView
+import SectionSpacer
 import SectionTextFooter
 import SectionView
 import androidx.compose.desktop.ui.tooling.preview.Preview
-import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.InlineTextContent
@@ -423,7 +423,7 @@ fun GroupMemberInfoLayout(
     // TODO [relays] re-enable when relay management ships
     val canRemove = member.canBeRemoved(groupInfo) && member.memberRole != GroupMemberRole.Relay
     if (canBlockForAll || canRemove) {
-      SectionDividerSpaced()
+      SectionDividerSpaced(maxBottomPadding = false)
       SectionView {
         if (canBlockForAll) {
           if (member.blockedByAdmin) {
@@ -445,7 +445,7 @@ fun GroupMemberInfoLayout(
 
   @Composable
   fun NonAdminBlockSection() {
-    SectionDividerSpaced()
+    SectionDividerSpaced(maxBottomPadding = false)
     SectionView {
       if (member.blockedByAdmin) {
         SettingsActionItem(
@@ -469,7 +469,7 @@ fun GroupMemberInfoLayout(
     ) {
       GroupMemberInfoHeader(member)
     }
-    SectionDividerSpaced()
+    SectionSpacer()
 
     val contactId = member.memberContactId
 
@@ -533,7 +533,7 @@ fun GroupMemberInfoLayout(
         }
       }
 
-      SectionDividerSpaced()
+      SectionSpacer()
     }
 
     val showMemberSupportChat = !openedFromSupportChat &&
@@ -566,7 +566,7 @@ fun GroupMemberInfoLayout(
     }
 
     if (member.contactLink != null) {
-      SectionView(stringResource(MR.strings.address_section_title)) {
+      SectionView(stringResource(MR.strings.address_section_title).uppercase()) {
         SimpleXLinkQRCode(member.contactLink)
         val clipboard = LocalClipboardManager.current
         ShareAddressButton { clipboard.shareText(simplexChatLink(member.contactLink)) }
@@ -577,8 +577,8 @@ fun GroupMemberInfoLayout(
         } else {
           ConnectViaAddressButton(onClick = { connectViaAddress(member.contactLink) })
         }
+        SectionTextFooter(stringResource(MR.strings.you_can_share_this_address_with_your_contacts).format(member.displayName))
       }
-      SectionTextFooter(stringResource(MR.strings.you_can_share_this_address_with_your_contacts).format(member.displayName))
       SectionDividerSpaced()
     }
 

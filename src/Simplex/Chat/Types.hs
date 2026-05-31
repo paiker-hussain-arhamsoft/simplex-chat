@@ -134,19 +134,17 @@ data User = User
     showNtfs :: Bool,
     sendRcptsContacts :: Bool,
     sendRcptsSmallGroups :: Bool,
-    autoAcceptMemberContacts :: Bool,
+    autoAcceptMemberContacts :: BoolDef,
     userMemberProfileUpdatedAt :: Maybe UTCTime,
-    userChatRelay :: BoolDef,
-    clientService :: BoolDef,
-    uiThemes :: Maybe UIThemeEntityOverrides
+    uiThemes :: Maybe UIThemeEntityOverrides,
+    userChatRelay :: BoolDef
   }
   deriving (Show)
 
 data NewUser = NewUser
   { profile :: Maybe Profile,
     pastTimestamp :: Bool,
-    userChatRelay :: BoolDef,
-    clientService :: BoolDef
+    userChatRelay :: Bool
   }
   deriving (Show)
 
@@ -795,10 +793,19 @@ instance FromField GroupType where fromField = fromTextField_ textDecode
 
 instance ToField GroupType where toField = toField . textEncode
 
+data PublicGroupAccess = PublicGroupAccess
+  { groupWebPage :: Maybe Text,
+    groupDomain :: Maybe Text,
+    domainWebPage :: Bool,
+    allowEmbedding :: Bool
+  }
+  deriving (Eq, Show)
+
 data PublicGroupProfile = PublicGroupProfile
   { groupType :: GroupType,
     groupLink :: ShortLinkContact,
-    publicGroupId :: B64UrlByteString -- group identity = sha256(genesis root key), immutable
+    publicGroupId :: B64UrlByteString, -- group identity = sha256(genesis root key), immutable
+    publicGroupAccess :: Maybe PublicGroupAccess
   }
   deriving (Eq, Show)
 
@@ -2085,6 +2092,8 @@ instance FromJSON GroupType where
 instance ToJSON GroupType where
   toJSON = textToJSON
   toEncoding = textToEncoding
+
+$(JQ.deriveJSON defaultJSON ''PublicGroupAccess)
 
 $(JQ.deriveJSON defaultJSON ''PublicGroupProfile)
 
