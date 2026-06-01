@@ -1261,8 +1261,10 @@ requiresSignature = \case
   XInfo_ -> True
   _ -> False
 
--- TODO [relays] can be tightened — sender keys are now disseminated via
--- TODO   prepended XGrpMemNew before forwarded XInfo/XGrpLeave reach the recipient.
+-- TODO [relays] relay: vectors tracking which members received which other member profiles/keys.
+-- TODO   - don't forward XGrpLeave/XInfo to members who haven't seen sender's profile/key.
+-- TODO   - unverifiedAllowed is a temporary workaround postponing targeted event forwarding.
+
 -- Allow signed but unverified XGrpLeave/XInfo between subscribers when sender's key is unknown.
 -- Owner keys are always known, so subscribers are required to verify from owners.
 -- Likewise, subscriber keys are always known to owners, so owners are required to verify from subscribers.

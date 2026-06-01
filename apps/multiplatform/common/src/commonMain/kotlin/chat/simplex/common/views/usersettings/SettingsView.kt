@@ -1,9 +1,8 @@
 package chat.simplex.common.views.usersettings
 
 import SectionBottomSpacer
-import itemHPadding
-import SectionItemView
 import SectionDividerSpaced
+import SectionItemView
 import SectionView
 import TextIconSpaced
 import androidx.compose.desktop.ui.tooling.preview.Preview
@@ -47,13 +46,12 @@ fun SettingsView(chatModel: ChatModel, setPerformLA: (Boolean) -> Unit, close: (
     user?.displayName,
     setPerformLA = setPerformLA,
     showModal = { modalView -> { ModalManager.start.showModal { modalView(chatModel) } } },
-    showSettingsModal = { modalView -> { ModalManager.start.showModal(settings = true, cardScreen = true) { modalView(chatModel) } } },
+    showSettingsModal = { modalView -> { ModalManager.start.showModal(true) { modalView(chatModel) } } },
     showSettingsModalWithSearch = { modalView ->
       ModalManager.start.showCustomModal { close ->
         val search = rememberSaveable { mutableStateOf("") }
         ModalView(
           { close() },
-          cardScreen = true,
           showSearch = true,
           searchAlwaysVisible = true,
           onSearchValueChanged = { search.value = it },
@@ -350,9 +348,9 @@ fun SettingsActionItemWithContent(icon: Painter?, text: String? = null, click: (
     click,
     extraPadding = extraPadding,
     padding = if (extraPadding && icon != null)
-      PaddingValues(start = DEFAULT_PADDING * 1.7f, end = itemHPadding)
+      PaddingValues(start = DEFAULT_PADDING * 1.7f, end = DEFAULT_PADDING)
     else
-      PaddingValues(horizontal = itemHPadding),
+      PaddingValues(horizontal = DEFAULT_PADDING),
     disabled = disabled
   ) {
     if (icon != null) {
