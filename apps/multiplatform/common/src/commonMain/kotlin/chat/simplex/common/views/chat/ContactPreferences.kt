@@ -2,13 +2,12 @@ package chat.simplex.common.views.chat
 
 import InfoRow
 import SectionBottomSpacer
-import SectionItemView
 import SectionDividerSpaced
+import SectionItemView
 import SectionTextFooter
 import SectionView
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.ui.Modifier
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.*
@@ -55,7 +54,6 @@ fun ContactPreferencesView(
       if (featuresAllowed == currentFeaturesAllowed) close()
       else showUnsavedChangesAlert({ savePrefs(close) }, close)
     },
-    cardScreen = true,
   ) {
     ContactPreferencesLayout(
       featuresAllowed,
@@ -92,27 +90,27 @@ private fun ContactPreferencesLayout(
     TimedMessagesFeatureSection(featuresAllowed, contact.mergedPreferences.timedMessages, timedMessages, onTTLUpdated) { allowed, ttl ->
       applyPrefs(featuresAllowed.copy(timedMessagesAllowed = allowed, timedMessagesTTL = ttl ?: currentFeaturesAllowed.timedMessagesTTL))
     }
-    SectionDividerSpaced()
+    SectionDividerSpaced(true)
     val allowFullDeletion: MutableState<ContactFeatureAllowed> = remember(featuresAllowed) { mutableStateOf(featuresAllowed.fullDelete) }
     FeatureSection(ChatFeature.FullDelete, user.fullPreferences.fullDelete.allow, contact.mergedPreferences.fullDelete, allowFullDeletion) {
       applyPrefs(featuresAllowed.copy(fullDelete = it))
     }
-    SectionDividerSpaced()
+    SectionDividerSpaced(true)
     val allowReactions: MutableState<ContactFeatureAllowed> = remember(featuresAllowed) { mutableStateOf(featuresAllowed.reactions) }
     FeatureSection(ChatFeature.Reactions, user.fullPreferences.reactions.allow, contact.mergedPreferences.reactions, allowReactions) {
       applyPrefs(featuresAllowed.copy(reactions = it))
     }
-    SectionDividerSpaced()
+    SectionDividerSpaced(true)
     val allowVoice: MutableState<ContactFeatureAllowed> = remember(featuresAllowed) { mutableStateOf(featuresAllowed.voice) }
     FeatureSection(ChatFeature.Voice, user.fullPreferences.voice.allow, contact.mergedPreferences.voice, allowVoice) {
       applyPrefs(featuresAllowed.copy(voice = it))
     }
-    SectionDividerSpaced()
+    SectionDividerSpaced(true)
     val allowCalls: MutableState<ContactFeatureAllowed> = remember(featuresAllowed) { mutableStateOf(featuresAllowed.calls) }
     FeatureSection(ChatFeature.Calls, user.fullPreferences.calls.allow, contact.mergedPreferences.calls, allowCalls) {
       applyPrefs(featuresAllowed.copy(calls = it))
     }
-    SectionDividerSpaced()
+    SectionDividerSpaced(maxTopPadding = true, maxBottomPadding = false)
     ResetSaveButtons(
       reset = reset,
       save = savePrefs,
@@ -137,7 +135,7 @@ private fun FeatureSection(
   )
 
   SectionView(
-    feature.text,
+    feature.text.uppercase(),
     icon = feature.iconFilled(),
     iconTint = if (enabled.forUser) SimplexGreen else if (enabled.forContact) WarningYellow else Color.Red,
     leadingIcon = true,
@@ -172,7 +170,7 @@ private fun TimedMessagesFeatureSection(
   )
 
   SectionView(
-    ChatFeature.TimedMessages.text,
+    ChatFeature.TimedMessages.text.uppercase(),
     icon = ChatFeature.TimedMessages.iconFilled(),
     iconTint = if (enabled.forUser) SimplexGreen else if (enabled.forContact) WarningYellow else Color.Red,
     leadingIcon = true,
