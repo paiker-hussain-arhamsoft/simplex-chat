@@ -255,11 +255,11 @@ data ChatController = ChatController
     deliveryTaskWorkers :: TMap DeliveryWorkerKey Worker,
     deliveryJobWorkers :: TMap DeliveryWorkerKey Worker,
     relayRequestWorkers :: TMap Int Worker, -- single global worker with key 1 is used to fit into existing worker management framework
-    relayGroupLinkChecksAsync :: TVar (Maybe (Async ())),
     chatRelayTests :: TMap ConnId RelayTest,
     expireCIThreads :: TMap UserId (Maybe (Async ())),
     expireCIFlags :: TMap UserId Bool,
     cleanupManagerAsync :: TVar (Maybe (Async ())),
+    relayGroupLinkChecksAsync :: TVar (Maybe (Async ())),
     chatActivated :: TVar Bool,
     timedItemThreads :: TMap (ChatRef, ChatItemId) (TVar (Maybe (Weak ThreadId))),
     showLiveItems :: TVar Bool,
@@ -294,7 +294,6 @@ data ChatCommand
   | UnhideUser UserPwd
   | MuteUser
   | UnmuteUser
-  | SetClientService UserId ContactName Bool
   | APIDeleteUser {userId :: UserId, delSMPQueues :: Bool, viewPwd :: Maybe UserPwd}
   | DeleteUser UserName Bool (Maybe UserPwd)
   | StartChat {mainApp :: Bool, enableSndFiles :: Bool} -- enableSndFiles has no effect when mainApp is True
@@ -896,7 +895,6 @@ data ChatEvent
   | CEvtConnectionsDiff {userIds :: DatabaseDiff AgentUserId, connIds :: DatabaseDiff AgentConnId}
   | CEvtSubscriptionEnd {user :: User, connectionEntity :: ConnectionEntity}
   | CEvtSubscriptionStatus {server :: SMPServer, subscriptionStatus :: SubscriptionStatus, connections :: [AgentConnId]}
-  | CEvtServiceSubStatus {server :: SMPServer, serviceSubEvent :: ServiceSubEvent}
   | CEvtHostConnected {protocol :: AProtocolType, transportHost :: TransportHost}
   | CEvtHostDisconnected {protocol :: AProtocolType, transportHost :: TransportHost}
   | CEvtReceivedGroupInvitation {user :: User, groupInfo :: GroupInfo, contact :: Contact, fromMemberRole :: GroupMemberRole, memberRole :: GroupMemberRole}
@@ -1313,13 +1311,6 @@ data ChatItemDeletion = ChatItemDeletion
   }
   deriving (Show)
 
-data ServiceSubEvent
-  = ServiceSubUp {serviceError :: Maybe Text, queueCount :: Int64}
-  | ServiceSubDown {queueCount :: Int64}
-  | ServiceSubAll
-  | ServiceSubEnd {queueCount :: Int64}
-  deriving (Show)
-  
 data ChatLogLevel = CLLDebug | CLLInfo | CLLWarning | CLLError | CLLImportant
   deriving (Eq, Ord, Show)
 
@@ -1353,6 +1344,7 @@ data ChatErrorType
   | CENoSndFileUser {agentSndFileId :: AgentSndFileId}
   | CENoRcvFileUser {agentRcvFileId :: AgentRcvFileId}
   | CEUserUnknown
+  | CEActiveUserExists -- TODO delete
   | CEUserExists {contactName :: ContactName}
   | CEChatRelayExists
   | CEDifferentActiveUser {commandUserId :: UserId, activeUserId :: UserId}
@@ -1441,9 +1433,6 @@ data SQLiteError = SQLiteErrorNotADatabase | SQLiteError {dbError :: String}
 
 throwDBError :: DatabaseError -> CM ()
 throwDBError = throwError . ChatErrorDatabase
-
-chatErrorAgent :: AgentErrorType -> ChatError
-chatErrorAgent e = ChatErrorAgent e (AgentConnId B.empty) Nothing
 
 -- TODO review errors, some of it can be covered by HTTP2 errors
 data RemoteHostError
@@ -1676,7 +1665,7 @@ withAgent :: (AgentClient -> ExceptT AgentErrorType IO a) -> CM a
 withAgent action =
   asks smpAgent
     >>= liftIO . runExceptT . action
-    >>= liftEither . first chatErrorAgent
+    >>= liftEither . first (\e -> ChatErrorAgent e (AgentConnId "") Nothing)
 
 withAgent' :: (AgentClient -> IO a) -> CM' a
 withAgent' action = asks smpAgent >>= liftIO . action
@@ -1740,8 +1729,6 @@ $(JQ.deriveJSON defaultJSON ''ServerAddress)
 $(JQ.deriveJSON defaultJSON ''ParsedServerAddress)
 
 $(JQ.deriveJSON defaultJSON ''ChatItemDeletion)
-
-$(JQ.deriveJSON (sumTypeJSON $ dropPrefix "ServiceSub") ''ServiceSubEvent)
 
 $(JQ.deriveJSON defaultJSON ''CoreVersionInfo)
 
