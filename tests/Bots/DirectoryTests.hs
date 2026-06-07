@@ -126,7 +126,6 @@ mkDirectoryOpts TestParams {tmpPath = ps} superUsers ownersGroup webFolder =
       directoryLog = Just $ ps </> "directory_service.log",
       migrateDirectoryLog = Nothing,
       serviceName = "SimpleX Directory",
-      clientService = True,
       runCLI = False,
       searchResults = 3,
       webFolder,
@@ -1997,7 +1996,7 @@ testRegisterChannelViaCard ps =
           [ do
               relay <## "'SimpleX Directory': accepting request to join group #news..."
               relay <## "#news: 'SimpleX Directory' joined the group",
-            bob <## "#news: relay introduced 'SimpleX Directory_1' in the channel"
+            bob <## "#news: relay added 'SimpleX Directory_1' to the group"
           ]
         -- owner sends a message to trigger member introduction
         bob <# "'SimpleX Directory'> Joined the channel news. Registration is pending approval — it may take up to 48 hours."
@@ -2096,7 +2095,7 @@ testDeleteChannelRegistration ps =
           [ do
               relay <## "'SimpleX Directory': accepting request to join group #news..."
               relay <## "#news: 'SimpleX Directory' joined the group",
-            bob <## "#news: relay introduced 'SimpleX Directory_1' in the channel"
+            bob <## "#news: relay added 'SimpleX Directory_1' to the group"
           ]
         bob <# "'SimpleX Directory'> Joined the channel news. Registration is pending approval — it may take up to 48 hours."
         superUser <# "'SimpleX Directory'> bob submitted the channel ID 1:"
@@ -2140,7 +2139,7 @@ testReregistrationAlreadyListed ps =
           [ do
               relay <## "'SimpleX Directory': accepting request to join group #news..."
               relay <## "#news: 'SimpleX Directory' joined the group",
-            bob <## "#news: relay introduced 'SimpleX Directory_1' in the channel"
+            bob <## "#news: relay added 'SimpleX Directory_1' to the group"
           ]
         bob <# "'SimpleX Directory'> Joined the channel news. Registration is pending approval — it may take up to 48 hours."
         superUser <# "'SimpleX Directory'> bob submitted the channel ID 1:"
@@ -2199,7 +2198,7 @@ testLinkCheckUpdatesCount ps = do
               [ do
                   relay <## "'SimpleX Directory': accepting request to join group #news..."
                   relay <## "#news: 'SimpleX Directory' joined the group",
-                bob <## "#news: relay introduced 'SimpleX Directory_1' in the channel"
+                bob <## "#news: relay added 'SimpleX Directory_1' to the group"
               ]
             bob <# "'SimpleX Directory'> Joined the channel news. Registration is pending approval — it may take up to 48 hours."
             superUser <# "'SimpleX Directory'> bob submitted the channel ID 1:"

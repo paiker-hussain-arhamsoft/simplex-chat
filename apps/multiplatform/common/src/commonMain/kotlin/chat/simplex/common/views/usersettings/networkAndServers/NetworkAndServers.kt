@@ -9,7 +9,6 @@ import SectionTextFooter
 import SectionView
 import SectionViewSelectable
 import TextIconSpaced
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material.*
@@ -85,7 +84,7 @@ fun ModalData.NetworkAndServersView(closeNetworkAndServers: () -> Unit) {
       onClose(close = { ModalManager.start.closeModals() })
     }
   }
-  ModalView(close = { onClose(closeNetworkAndServers) }, cardScreen = true) {
+  ModalView(close = { onClose(closeNetworkAndServers) }) {
     NetworkAndServersLayout(
       currentRemoteHost = currentRemoteHost,
       networkUseSocksProxy = networkUseSocksProxy,
@@ -211,7 +210,7 @@ fun ModalData.NetworkAndServersView(closeNetworkAndServers: () -> Unit) {
     AppBarTitle(stringResource(MR.strings.network_and_servers))
     // TODO: Review this and socks.
     if (!chatModel.desktopNoUserNoRemote) {
-      SectionView(generalGetString(MR.strings.network_preset_servers_title)) {
+      SectionView(generalGetString(MR.strings.network_preset_servers_title).uppercase()) {
         userServers.value.forEachIndexed { index, srv ->
           srv.operator?.let { ServerOperatorRow(index, it, currUserServers, userServers, serverErrors, serverWarnings, currentRemoteHost?.remoteHostId) }
         }
@@ -263,10 +262,13 @@ fun ModalData.NetworkAndServersView(closeNetworkAndServers: () -> Unit) {
         UseSocksProxySwitch(networkUseSocksProxy, toggleSocksProxy)
         SettingsActionItem(painterResource(MR.images.ic_settings_ethernet), stringResource(MR.strings.network_socks_proxy_settings), { showCustomModal { SocksProxySettings(networkUseSocksProxy.value, appPrefs.networkProxy, onionHosts, sessionMode = appPrefs.networkSessionMode.get(), false, it) } })
         SettingsActionItem(painterResource(MR.images.ic_cable), stringResource(MR.strings.network_settings), { ModalManager.start.showCustomModal { AdvancedNetworkSettingsView(showModal, it) } })
+        if (networkUseSocksProxy.value) {
+          SectionTextFooter(annotatedStringResource(MR.strings.socks_proxy_setting_limitations))
+          SectionDividerSpaced(maxTopPadding = true)
+        } else {
+          SectionDividerSpaced(maxBottomPadding = false)
+        }
       }
-    }
-    if (currentRemoteHost == null && networkUseSocksProxy.value) {
-      SectionTextFooter(annotatedStringResource(MR.strings.socks_proxy_setting_limitations))
     }
     val saveDisabled = !serversCanBeSaved(currUserServers.value, userServers.value, serverErrors.value)
 
@@ -301,7 +303,7 @@ fun ModalData.NetworkAndServersView(closeNetworkAndServers: () -> Unit) {
 
     if (appPlatform.isAndroid) {
       SectionDividerSpaced()
-      SectionView(generalGetString(MR.strings.settings_section_title_network_connection)) {
+      SectionView(generalGetString(MR.strings.settings_section_title_network_connection).uppercase()) {
         val info = remember { chatModel.networkInfo }.value
         SettingsActionItemWithContent(icon = null, info.networkType.text) {
           Icon(painterResource(MR.images.ic_circle_filled), stringResource(MR.strings.icon_descr_server_status_connected), tint = if (info.online) Color.Green else MaterialTheme.colors.error)
@@ -464,11 +466,10 @@ fun SocksProxySettings(
         )
       }
     },
-    cardScreen = true,
   ) {
     ColumnWithScrollBar {
       AppBarTitle(generalGetString(MR.strings.network_socks_proxy_settings))
-      SectionView(stringResource(MR.strings.network_socks_proxy)) {
+      SectionView(stringResource(MR.strings.network_socks_proxy).uppercase()) {
         Column(Modifier.padding(horizontal = DEFAULT_PADDING)) {
           DefaultConfigurableTextField(
             hostUnsaved,
@@ -494,9 +495,9 @@ fun SocksProxySettings(
         SectionTextFooter(annotatedStringResource(MR.strings.disable_onion_hosts_when_not_supported))
       }
 
-      SectionDividerSpaced()
+      SectionDividerSpaced(maxTopPadding = true)
 
-      SectionView(stringResource(MR.strings.network_proxy_auth)) {
+      SectionView(stringResource(MR.strings.network_proxy_auth).uppercase()) {
         PreferenceToggle(
           stringResource(MR.strings.network_proxy_random_credentials),
           checked = proxyAuthRandomUnsaved.value,
@@ -525,7 +526,7 @@ fun SocksProxySettings(
         SectionTextFooter(proxyAuthFooter(usernameUnsaved.value.text, passwordUnsaved.value.text, proxyAuthModeUnsaved.value, sessionMode))
       }
 
-      SectionDividerSpaced()
+      SectionDividerSpaced(maxBottomPadding = false, maxTopPadding = true)
 
       SectionView {
         SectionItemView({

@@ -7,7 +7,6 @@ import SectionView
 import SectionViewWithButton
 import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.background
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -131,7 +130,7 @@ private fun ContactConnectionInfoLayout(
     if (connLink != null && connLink.connFullLink.isNotEmpty() && contactConnection.initiated) {
       Spacer(Modifier.height(DEFAULT_PADDING))
       SectionViewWithButton(
-        stringResource(MR.strings.one_time_link),
+        stringResource(MR.strings.one_time_link).uppercase(),
         titleButton = if (connLink.connShortLink == null) null else {{ ToggleShortLinkButton(showShortLink) }}
       ) {
         SimpleXCreatedLinkQRCode(connLink, short = showShortLink.value)
@@ -147,7 +146,7 @@ private fun ContactConnectionInfoLayout(
     }
     SectionTextFooter(sharedProfileInfo(chatModel, contactConnection.incognito))
 
-    SectionDividerSpaced()
+    SectionDividerSpaced(maxTopPadding = true, maxBottomPadding = false)
 
     DeleteButton(deleteConnection)
 
