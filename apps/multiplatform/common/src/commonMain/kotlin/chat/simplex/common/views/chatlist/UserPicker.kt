@@ -380,7 +380,7 @@ private fun GlobalSettingsSection(
 
   SectionItemView(
     click = {
-      ModalManager.start.showModalCloseable(cardScreen = true) { close ->
+      ModalManager.start.showModalCloseable { close ->
         SettingsView(chatModel, setPerformLA, close)
       }
     },
