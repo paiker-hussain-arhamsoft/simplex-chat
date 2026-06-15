@@ -5,6 +5,7 @@ import SectionCustomFooter
 import SectionDividerSpaced
 import SectionItemView
 import SectionItemViewWithoutMinPadding
+import SectionSpacer
 import SectionView
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -160,7 +161,7 @@ fun AddGroupMembersLayout(
         iconColor = if (isInDarkTheme()) GroupDark else SettingsSecondaryLight
       )
     }
-    SectionDividerSpaced()
+    SectionSpacer()
 
     if (contactsToAdd.isEmpty() && searchText.value.text.isEmpty()) {
       Row(
@@ -194,8 +195,8 @@ fun AddGroupMembersLayout(
       SectionCustomFooter {
         InviteSectionFooter(selectedContactsCount = selectedContacts.size, allowModifyMembers, clearSelection)
       }
-      SectionDividerSpaced()
-      SectionView(stringResource(MR.strings.select_contacts)) {
+      SectionDividerSpaced(maxTopPadding = true)
+      SectionView(stringResource(MR.strings.select_contacts).uppercase()) {
         SectionItemView(padding = PaddingValues(start = DEFAULT_PADDING, end = DEFAULT_PADDING_HALF)) {
           SearchRowView(searchText)
         }
@@ -353,9 +354,10 @@ fun ContactCheckRow(
   ) {
     ProfileImage(size = 36.dp, contact.image)
     Spacer(Modifier.width(DEFAULT_SPACE_AFTER_ICON))
-    Text(
+    NameWithBadge(
       contact.chatViewName,
-      modifier = Modifier.weight(10f, fill = true),
+      if (contact.active) contact.profile.localBadge else null,
+      Modifier.weight(10f, fill = true),
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
       color = if (prohibitedToInviteIncognito) MaterialTheme.colors.secondary else Color.Unspecified

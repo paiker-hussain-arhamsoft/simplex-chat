@@ -186,6 +186,33 @@ export interface AutoAccept {
   acceptIncognito: boolean
 }
 
+export interface BadgeInfo {
+  badgeType: BadgeType
+  badgeExpiry?: string // ISO-8601 timestamp
+  badgeExtra: string
+}
+
+export interface BadgeProof {
+  badgeKeyIdx: number // int
+  presHeader: string
+  proof: string
+  badgeInfo: BadgeInfo
+}
+
+export enum BadgeStatus {
+  Active = "active",
+  Expired = "expired",
+  ExpiredOld = "expiredOld",
+  Failed = "failed",
+  UnknownKey = "unknownKey",
+}
+
+export enum BadgeType {
+  Supporter = "supporter",
+  Legend = "legend",
+  Investor = "investor",
+}
+
 export interface BlockingInfo {
   reason: BlockingReason
   notice?: ClientNotice
@@ -994,6 +1021,7 @@ export type ChatErrorType =
   | ChatErrorType.NoSndFileUser
   | ChatErrorType.NoRcvFileUser
   | ChatErrorType.UserUnknown
+  | ChatErrorType.ActiveUserExists
   | ChatErrorType.UserExists
   | ChatErrorType.ChatRelayExists
   | ChatErrorType.DifferentActiveUser
@@ -1071,6 +1099,7 @@ export namespace ChatErrorType {
     | "noSndFileUser"
     | "noRcvFileUser"
     | "userUnknown"
+    | "activeUserExists"
     | "userExists"
     | "chatRelayExists"
     | "differentActiveUser"
@@ -1166,6 +1195,10 @@ export namespace ChatErrorType {
 
   export interface UserUnknown extends Interface {
     type: "userUnknown"
+  }
+
+  export interface ActiveUserExists extends Interface {
+    type: "activeUserExists"
   }
 
   export interface UserExists extends Interface {
@@ -2038,6 +2071,7 @@ export interface ContactShortLinkData {
   profile: Profile
   message?: MsgContent
   business: boolean
+  localBadge?: LocalBadge
 }
 
 export enum ContactStatus {
@@ -2934,6 +2968,11 @@ export interface LinkPreview {
   content?: LinkContent
 }
 
+export interface LocalBadge {
+  badge: BadgeInfo
+  status: BadgeStatus
+}
+
 export interface LocalProfile {
   profileId: number // int64
   displayName: string
@@ -2943,6 +2982,7 @@ export interface LocalProfile {
   contactLink?: string
   preferences?: Preferences
   peerType?: ChatPeerType
+  localBadge?: LocalBadge
   localAlias: string
 }
 
@@ -3190,7 +3230,6 @@ export interface NewUser {
   profile?: Profile
   pastTimestamp: boolean
   userChatRelay: boolean
-  clientService: boolean
 }
 
 export interface NoteFolder {
@@ -3294,6 +3333,7 @@ export interface Profile {
   contactLink?: string
   preferences?: Preferences
   peerType?: ChatPeerType
+  badge?: BadgeProof
 }
 
 export type ProxyClientError = 
@@ -4839,9 +4879,8 @@ export interface User {
   sendRcptsSmallGroups: boolean
   autoAcceptMemberContacts: boolean
   userMemberProfileUpdatedAt?: string // ISO-8601 timestamp
-  userChatRelay: boolean
-  clientService: boolean
   uiThemes?: UIThemeEntityOverrides
+  userChatRelay: boolean
 }
 
 export interface UserChatRelay {
@@ -4878,7 +4917,7 @@ export interface UserContactRequest {
   cReqChatVRange: VersionRange
   localDisplayName: string
   profileId: number // int64
-  profile: Profile
+  profile: LocalProfile
   createdAt: string // ISO-8601 timestamp
   updatedAt: string // ISO-8601 timestamp
   xContactId?: string

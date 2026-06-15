@@ -10,6 +10,10 @@ This file is generated automatically.
 - [AgentCryptoError](#agentcryptoerror)
 - [AgentErrorType](#agenterrortype)
 - [AutoAccept](#autoaccept)
+- [BadgeInfo](#badgeinfo)
+- [BadgeProof](#badgeproof)
+- [BadgeStatus](#badgestatus)
+- [BadgeType](#badgetype)
 - [BlockingInfo](#blockinginfo)
 - [BlockingReason](#blockingreason)
 - [BrokerErrorType](#brokererrortype)
@@ -122,6 +126,7 @@ This file is generated automatically.
 - [LinkContent](#linkcontent)
 - [LinkOwnerSig](#linkownersig)
 - [LinkPreview](#linkpreview)
+- [LocalBadge](#localbadge)
 - [LocalProfile](#localprofile)
 - [MemberCriteria](#membercriteria)
 - [MsgChatLink](#msgchatlink)
@@ -351,6 +356,49 @@ INACTIVE:
 
 **Record type**:
 - acceptIncognito: bool
+
+
+---
+
+## BadgeInfo
+
+**Record type**:
+- badgeType: [BadgeType](#badgetype)
+- badgeExpiry: UTCTime?
+- badgeExtra: string
+
+
+---
+
+## BadgeProof
+
+**Record type**:
+- badgeKeyIdx: int
+- presHeader: string
+- proof: string
+- badgeInfo: [BadgeInfo](#badgeinfo)
+
+
+---
+
+## BadgeStatus
+
+**Enum type**:
+- "active"
+- "expired"
+- "expiredOld"
+- "failed"
+- "unknownKey"
+
+
+---
+
+## BadgeType
+
+**Enum type**:
+- "supporter"
+- "legend"
+- "investor"
 
 
 ---
@@ -997,6 +1045,9 @@ NoRcvFileUser:
 
 UserUnknown:
 - type: "userUnknown"
+
+ActiveUserExists:
+- type: "activeUserExists"
 
 UserExists:
 - type: "userExists"
@@ -1763,6 +1814,7 @@ ContactViaAddress:
 - profile: [Profile](#profile)
 - message: [MsgContent](#msgcontent)?
 - business: bool
+- localBadge: [LocalBadge](#localbadge)?
 
 
 ---
@@ -2671,6 +2723,15 @@ Unknown:
 
 ---
 
+## LocalBadge
+
+**Record type**:
+- badge: [BadgeInfo](#badgeinfo)
+- status: [BadgeStatus](#badgestatus)
+
+
+---
+
 ## LocalProfile
 
 **Record type**:
@@ -2682,6 +2743,7 @@ Unknown:
 - contactLink: string?
 - preferences: [Preferences](#preferences)?
 - peerType: [ChatPeerType](#chatpeertype)?
+- localBadge: [LocalBadge](#localbadge)?
 - localAlias: string
 
 
@@ -2894,7 +2956,6 @@ SubscribeError:
 - profile: [Profile](#profile)?
 - pastTimestamp: bool
 - userChatRelay: bool
-- clientService: bool
 
 
 ---
@@ -3027,6 +3088,7 @@ count=<count>
 - contactLink: string?
 - preferences: [Preferences](#preferences)?
 - peerType: [ChatPeerType](#chatpeertype)?
+- badge: [BadgeProof](#badgeproof)?
 
 
 ---
@@ -4157,9 +4219,8 @@ Handshake:
 - sendRcptsSmallGroups: bool
 - autoAcceptMemberContacts: bool
 - userMemberProfileUpdatedAt: UTCTime?
-- userChatRelay: bool
-- clientService: bool
 - uiThemes: [UIThemeEntityOverrides](#uithemeentityoverrides)?
+- userChatRelay: bool
 
 
 ---
@@ -4212,7 +4273,7 @@ Handshake:
 - cReqChatVRange: [VersionRange](#versionrange)
 - localDisplayName: string
 - profileId: int64
-- profile: [Profile](#profile)
+- profile: [LocalProfile](#localprofile)
 - createdAt: UTCTime
 - updatedAt: UTCTime
 - xContactId: string?

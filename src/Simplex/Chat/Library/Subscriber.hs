@@ -28,13 +28,11 @@ import Data.Either (lefts, partitionEithers, rights)
 import Data.Foldable (foldr', foldrM)
 import Data.Functor (($>))
 import Data.Int (Int64)
-import Data.List (find, foldl')
+import Data.List (find)
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as L
-import qualified Data.IntSet as IS
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
-import qualified Data.Set as S
 import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -48,7 +46,7 @@ import Simplex.Chat.Controller
 import Simplex.Chat.Delivery
 import Simplex.Chat.Library.Internal
 import Simplex.Chat.Messages
-import Simplex.Chat.Messages.Batch (batchDeliveryTasks1, batchProfiles, batchProfilesWithBody, encodeBinaryBatch, encodeFwdElement, maxBatchElementSize)
+import Simplex.Chat.Messages.Batch (batchDeliveryTasks1, encodeBinaryBatch, encodeFwdElement)
 import Simplex.Chat.Messages.CIContent
 import Simplex.Chat.Messages.CIContent.Events
 import Simplex.Chat.ProfileGenerator (generateRandomProfile)
@@ -88,7 +86,7 @@ import Simplex.Messaging.Crypto.Ratchet (PQEncryption (..), PQSupport (..), patt
 import qualified Simplex.Messaging.Crypto.Ratchet as CR
 import Simplex.Messaging.Encoding (smpEncode)
 import Simplex.Messaging.Encoding.String
-import Simplex.Messaging.Protocol (ErrorType (..), MsgFlags (..), ServiceSub (..), ServiceSubError (..), ServiceSubResult (..))
+import Simplex.Messaging.Protocol (ErrorType (..), MsgFlags (..))
 import qualified Simplex.Messaging.Protocol as SMP
 import Simplex.Messaging.ServiceScheme (ServiceScheme (..))
 import qualified Simplex.Messaging.TMap as TM
@@ -113,7 +111,7 @@ processAgentMessage _ _ (DEL_RCVQS delQs) =
 processAgentMessage _ _ (DEL_CONNS connIds) =
   toView $ CEvtAgentConnsDeleted $ L.map AgentConnId connIds
 processAgentMessage _ "" (ERR e) =
-  eToView $ chatErrorAgent e
+  eToView $ ChatErrorAgent e (AgentConnId "") Nothing
 processAgentMessage corrId connId msg = do
   lockEntity <- critical connId (withStore (`getChatLockEntity` AgentConnId connId))
   withEntityLock "processAgentMessage" lockEntity $ do
@@ -144,23 +142,12 @@ processAgentMessageNoConn = \case
   UP srv conns -> serverEvent srv SSActive conns
   SUSPENDED -> toView CEvtChatSuspended
   DEL_USER agentUserId -> toView $ CEvtAgentUserDeleted agentUserId
-  SERVICE_UP srv (ServiceSubResult e_ ss) -> serviceEvent srv $ ServiceSubUp (errText <$> e_) (smpQueueCount ss)
-    where
-      errText = \case
-        SSErrorServiceId {} -> "unexpected service ID"
-        SSErrorQueueCount {expectedQueueCount = n} -> "expected " <> tshow n <> " connections"
-        SSErrorQueueIdsHash {} -> "different IDs hash"
-  SERVICE_DOWN srv ss -> serviceEvent srv $ ServiceSubDown $ smpQueueCount ss
-  SERVICE_ALL srv -> serviceEvent srv ServiceSubAll
-  SERVICE_END srv ss -> serviceEvent srv $ ServiceSubEnd $ smpQueueCount ss
   ERRS cErrs -> errsEvent $ L.toList cErrs
   where
     hostEvent :: ChatEvent -> CM ()
     hostEvent = whenM (asks $ hostEvents . config) . toView
     serverEvent :: SMPServer -> SubscriptionStatus -> [ConnId] -> CM ()
     serverEvent srv nsStatus conns = toView $ CEvtSubscriptionStatus srv nsStatus $ map AgentConnId conns
-    serviceEvent :: SMPServer -> ServiceSubEvent -> CM ()
-    serviceEvent srv = toView . CEvtServiceSubStatus srv
     errsEvent :: [(ConnId, AgentErrorType)] -> CM ()
     errsEvent = toView . CEvtChatErrors . map (\(cId, e) -> ChatErrorAgent e (AgentConnId cId) Nothing)
 
@@ -394,7 +381,7 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
 
     agentMsgConnStatus :: Connection -> AEvent e -> Maybe ConnStatus
     agentMsgConnStatus Connection {connStatus = cs} = \case
-      JOINED True -> Just ConnSndReady
+      JOINED True _ -> Just ConnSndReady
       CONF {} -> Just ConnRequested
       INFO {} -> Just ConnSndReady
       CON _ -> Just ConnReady
@@ -450,9 +437,10 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
               -- [incognito] send saved profile
               (conn'', gInfo_) <- saveConnInfo conn' connInfo
               incognitoProfile <- forM customUserProfileId $ \profileId -> withStore (\db -> getProfileById db userId profileId)
-              let profileToSend = case gInfo_ of
-                    Just gInfo -> userProfileInGroup user gInfo (fromLocalProfile <$> incognitoProfile)
-                    Nothing -> userProfileDirect user (fromLocalProfile <$> incognitoProfile) Nothing True
+              profileToSend <-
+                presentUserBadge user incognitoProfile $ case gInfo_ of
+                  Just gInfo -> userProfileInGroup user gInfo (fromLocalProfile <$> incognitoProfile)
+                  Nothing -> userProfileDirect user (fromLocalProfile <$> incognitoProfile) Nothing True
               -- [async agent commands] no continuation needed, but command should be asynchronous for stability
               allowAgentConnectionAsync user conn'' confId $ XInfo profileToSend
         INFO pqSupport connInfo -> do
@@ -468,7 +456,8 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
         OK ->
           -- [async agent commands] continuation on receiving OK
           when (corrId /= "") $ withCompletedCommand conn agentMsg $ \_cmdData -> pure ()
-        JOINED _ ->
+        -- TODO [certs rcv]
+        JOINED _ _serviceId ->
           -- [async agent commands] continuation on receiving JOINED
           when (corrId /= "") $ withCompletedCommand conn agentMsg $ \_cmdData -> pure ()
         QCONT ->
@@ -487,7 +476,8 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
         -- TODO add debugging output
         _ -> pure ()
       Just ct@Contact {contactId} -> case agentMsg of
-        INV (ACR _ cReq) ->
+        -- TODO [certs rcv]
+        INV (ACR _ cReq) _serviceId ->
           -- [async agent commands] XGrpMemIntro continuation on receiving INV
           withCompletedCommand conn agentMsg $ \_ ->
             case cReq of
@@ -566,7 +556,7 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
               ct' <- processContactProfileUpdate ct profile False `catchAllErrors` const (pure ct)
               -- [incognito] send incognito profile
               incognitoProfile <- forM customUserProfileId $ \profileId -> withStore $ \db -> getProfileById db userId profileId
-              let p = userProfileDirect user (fromLocalProfile <$> incognitoProfile) (Just ct') True
+              p <- presentUserBadge user incognitoProfile $ userProfileDirect user (fromLocalProfile <$> incognitoProfile) (Just ct') True
               allowAgentConnectionAsync user conn'' confId $ XInfo p
               void $ withStore' $ \db -> resetMemberContactFields db ct'
             XGrpLinkInv glInv -> do
@@ -577,7 +567,7 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
               void $ createChatItem user (CDGroupSnd gInfo Nothing) False CIChatBanner Nothing (Just epochStart)
               -- [incognito] send saved profile
               incognitoProfile <- forM customUserProfileId $ \pId -> withStore (\db -> getProfileById db userId pId)
-              let profileToSend = userProfileInGroup user gInfo (fromLocalProfile <$> incognitoProfile)
+              profileToSend <- presentUserBadge user incognitoProfile $ userProfileInGroup user gInfo (fromLocalProfile <$> incognitoProfile)
               allowAgentConnectionAsync user conn'' confId $ XInfo profileToSend
               toView $ CEvtBusinessLinkConnecting user gInfo host ct
             _ -> messageError "CONF for existing contact must have x.grp.mem.info or x.info"
@@ -676,7 +666,8 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
         OK ->
           -- [async agent commands] continuation on receiving OK
           when (corrId /= "") $ withCompletedCommand conn agentMsg $ \_cmdData -> pure ()
-        JOINED sqSecured ->
+        -- TODO [certs rcv]
+        JOINED sqSecured _serviceId ->
           -- [async agent commands] continuation on receiving JOINED
           when (corrId /= "") $ withCompletedCommand conn agentMsg $ \_cmdData ->
             when (directOrUsed ct && sqSecured) $ do
@@ -717,7 +708,8 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
 
     processGroupMessage :: AEvent e -> ConnectionEntity -> Connection -> GroupInfo -> GroupMember -> CM ()
     processGroupMessage agentMsg connEntity conn@Connection {connId, connChatVersion, customUserProfileId, connectionCode} gInfo@GroupInfo {groupId, groupProfile, membership, chatSettings} m = case agentMsg of
-      INV (ACR _ cReq) ->
+      -- TODO [certs rcv]
+      INV (ACR _ cReq) _serviceId ->
         withCompletedCommand conn agentMsg $ \CommandData {cmdFunction} ->
           case cReq of
             groupConnReq@(CRInvitationUri _ _) -> case cmdFunction of
@@ -807,7 +799,7 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
                     (gInfo', m') <- withStore $ \db -> updatePreparedUserAndHostMembersInvited db cxt user gInfo m glInv
                     -- [incognito] send saved profile
                     incognitoProfile <- forM customUserProfileId $ \pId -> withStore (\db -> getProfileById db userId pId)
-                    let profileToSend = userProfileInGroup user gInfo (fromLocalProfile <$> incognitoProfile)
+                    profileToSend <- presentUserBadge user incognitoProfile $ userProfileInGroup user gInfo (fromLocalProfile <$> incognitoProfile)
                     allowAgentConnectionAsync user conn' confId $ XInfo profileToSend
                     toView $ CEvtGroupLinkConnecting user gInfo' m'
                 | otherwise -> messageError "x.grp.link.inv: publicGroupId mismatch"
@@ -822,7 +814,7 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
                 | sameMemberId memId m -> do
                     let GroupMember {memberId = membershipMemId} = membership
                         allowSimplexLinks = groupFeatureUserAllowed SGFSimplexLinks gInfo
-                        membershipProfile = redactedMemberProfile allowSimplexLinks $ fromLocalProfile $ memberProfile membership
+                    membershipProfile <- presentUserBadge user (incognitoMembershipProfile gInfo) $ redactedMemberProfile allowSimplexLinks $ fromLocalProfile $ memberProfile membership
                     -- TODO update member profile
                     -- [async agent commands] no continuation needed, but command should be asynchronous for stability
                     allowAgentConnectionAsync user conn' confId $ XGrpMemInfo membershipMemId membershipProfile
@@ -930,7 +922,7 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
             where
               sendXGrpLinkMem gInfo'' = do
                 let incognitoProfile = ExistingIncognito <$> incognitoMembershipProfile gInfo''
-                    profileToSend = userProfileInGroup user gInfo (fromIncognitoProfile <$> incognitoProfile)
+                profileToSend <- presentUserBadge user incognitoProfile $ userProfileInGroup user gInfo (fromIncognitoProfile <$> incognitoProfile)
                 void $ sendDirectMemberMessage conn (XGrpLinkMem profileToSend) groupId
           _ -> do
             unless (memberPending m) $ withStore' $ \db -> updateGroupMemberStatus db userId m GSMemConnected
@@ -1162,7 +1154,8 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
       OK ->
         -- [async agent commands] continuation on receiving OK
         when (corrId /= "") $ withCompletedCommand conn agentMsg $ \_cmdData -> pure ()
-      JOINED sqSecured ->
+      -- TODO [certs rcv]
+      JOINED sqSecured _serviceId ->
         -- [async agent commands] continuation on receiving JOINED
         when (corrId /= "") $ withCompletedCommand conn agentMsg $ \_cmdData ->
           when (sqSecured && connChatVersion >= batchSend2Version) $ do
@@ -1178,7 +1171,7 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
               relayLinkData_ <- liftIO $ decodeLinkUserData cData
               case (relayLinkData_, linkEntityId) of
                 (Just RelayShortLinkData {relayProfile = p}, Just entityId) ->
-                  withStore $ \db -> updateRelayMemberData db user m (MemberId entityId) (MemberKey relayKey) p
+                  withStore $ \db -> updateRelayMemberData db cxt user m (MemberId entityId) (MemberKey relayKey) p
                 _ -> throwChatError $ CEException "relay link: no relay link data or entity id"
               case cReq of
                 CRContactUri crData@ConnReqUriData {crClientData} -> do
@@ -1192,8 +1185,8 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
                       -- Update connection with data derived from cReq, now available after getConnShortLinkAsync
                       withStore' $ \db -> updateConnLinkData db user conn cReq cReqHash groupLinkId chatV pqSup
                       let GroupMember {memberId = membershipMemId} = membership
-                          incognitoProfile = fromLocalProfile <$> incognitoMembershipProfile gInfo
-                          profileToSend = userProfileInGroup user gInfo incognitoProfile
+                          incognitoProfile = incognitoMembershipProfile gInfo
+                      profileToSend <- presentUserBadge user incognitoProfile $ userProfileInGroup user gInfo (fromLocalProfile <$> incognitoProfile)
                       memberPubKey <- case groupKeys gInfo of
                         Just GroupKeys {memberPrivKey} -> pure $ C.publicKey memberPrivKey
                         Nothing -> throwChatError $ CEInternalError "no group keys for channel membership"
@@ -1692,7 +1685,7 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
           unless shouldDelConns $ withLog (eInfo <> " ok") $ ackMsg msgMeta $ if withRcpt then Just "" else Nothing
         -- If showCritical is True, then these errors don't result in ACK and show user visible alert
         -- This prevents losing the message that failed to be processed.
-        Left (ChatErrorStore SEDBBusyError {message}) | showCritical -> throwError $ chatErrorAgent $ CRITICAL True message
+        Left (ChatErrorStore SEDBBusyError {message}) | showCritical -> throwError $ ChatErrorAgent (CRITICAL True message) (AgentConnId "") Nothing
         Left e -> do
           withLog (eInfo <> " error: " <> tshow e) $ ackMsg msgMeta Nothing
           throwError e
@@ -2558,14 +2551,15 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
 
     processContactProfileUpdate :: Contact -> Profile -> Bool -> CM Contact
     processContactProfileUpdate c@Contact {profile = lp} p' createItems
-      | p /= p' = do
+      -- a failed/unknown-key badge is re-verified even when content is unchanged, so it heals after an app update adds the key
+      | contentChanged || badgeNeedsReverify lp = do
           c' <- withStore $ \db ->
             if userTTL == rcvTTL
-              then updateContactProfile db user c p'
+              then updateContactProfile db cxt user c p'
               else do
                 c' <- liftIO $ updateContactUserPreferences db user c ctUserPrefs'
-                updateContactProfile db user c' p'
-          when (directOrUsed c' && createItems) $ do
+                updateContactProfile db cxt user c' p'
+          when (contentChanged && directOrUsed c' && createItems) $ do
             createProfileUpdatedItem c'
             lift $ createRcvFeatureItems user c c'
           toView $ CEvtContactUpdated user c c'
@@ -2573,6 +2567,7 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
       | otherwise =
           pure c
       where
+        contentChanged = not (sameProfileContent p p')
         p = fromLocalProfile lp
         Contact {userPreferences = ctUserPrefs@Preferences {timedMessages = ctUserTMPref}} = c
         userTTL = prefParam $ getPreference SCFTimedMessages ctUserPrefs
@@ -2675,22 +2670,23 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
 
     processMemberProfileUpdate :: GroupInfo -> GroupMember -> Profile -> Maybe (RcvMessage, UTCTime) -> CM GroupMember
     processMemberProfileUpdate gInfo m@GroupMember {memberProfile = p, memberContactId} p' msgTs_
-      | redactedMemberProfile allowSimplexLinks (fromLocalProfile p) /= redactedMemberProfile allowSimplexLinks p' = do
-          updateBusinessChatProfile gInfo
+      -- a failed/unknown-key badge is re-verified even when content is unchanged, so it heals after an app update adds the key
+      | contentChanged || badgeNeedsReverify p = do
+          when contentChanged $ updateBusinessChatProfile gInfo
           case memberContactId of
             Nothing -> do
-              m' <- withStore $ \db -> updateMemberProfile db user m p'
+              m' <- withStore $ \db -> updateMemberProfile db cxt user m p'
               unless (muteEventInChannel gInfo m') $ do
-                forM_ msgTs_ $ createProfileUpdatedItem m'
+                when contentChanged $ forM_ msgTs_ $ createProfileUpdatedItem m'
                 toView $ CEvtGroupMemberUpdated user gInfo m m'
               pure m'
             Just mContactId -> do
               mCt <- withStore $ \db -> getContact db cxt user mContactId
               if canUpdateProfile mCt
                 then do
-                  (m', ct') <- withStore $ \db -> updateContactMemberProfile db user m mCt p'
+                  (m', ct') <- withStore $ \db -> updateContactMemberProfile db cxt user m mCt p'
                   unless (muteEventInChannel gInfo m') $ do
-                    forM_ msgTs_ $ createProfileUpdatedItem m'
+                    when contentChanged $ forM_ msgTs_ $ createProfileUpdatedItem m'
                     toView $ CEvtGroupMemberUpdated user gInfo m m'
                     toView $ CEvtContactUpdated user mCt ct'
                   pure m'
@@ -2704,6 +2700,7 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
       | otherwise =
           pure m
       where
+        contentChanged = not (sameProfileContent (redactedMemberProfile allowSimplexLinks (fromLocalProfile p)) (redactedMemberProfile allowSimplexLinks p'))
         allowSimplexLinks = groupFeatureMemberAllowed SGFSimplexLinks m gInfo
         updateBusinessChatProfile g@GroupInfo {businessChat} = case businessChat of
           Just bc | isMainBusinessMember bc m -> do
@@ -2962,9 +2959,7 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
 
     xGrpMemNew :: GroupInfo -> GroupMember -> MemberInfo -> Maybe MsgScope -> RcvMessage -> UTCTime -> CM (Maybe DeliveryJobScope)
     xGrpMemNew gInfo m memInfo@(MemberInfo memId memRole _ _ _) msgScope_ msg brokerTs = do
-      if useRelays' gInfo && isRelay m
-        then when (memRole > GRMember) $ throwChatError $ CEException "x.grp.mem.new: relay cannot introduce role above member in channel"
-        else checkHostRole m memRole
+      unless (useRelays' gInfo && isRelay m) $ checkHostRole m memRole
       if sameMemberId memId (membership gInfo)
         then pure Nothing
         else do
@@ -2986,7 +2981,7 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
               | otherwise -> messageError "x.grp.mem.new error: member already exists" $> Nothing
             Left _ -> do
               (newMember, gInfo') <- withStore $ \db -> do
-                newMember <- createNewGroupMember db user gInfo m memInfo GCPostMember initialStatus
+                newMember <- createNewGroupMember db cxt user gInfo m memInfo GCPostMember initialStatus
                 gInfo' <-
                   if memberPending newMember
                     then liftIO $ increaseGroupMembersRequireAttention db user gInfo
@@ -3038,7 +3033,7 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
                         MemberInfo mId mRole v p _
                           | mRole == GROwner -> MemberInfo mId mRole v p Nothing
                         _ -> memInfo
-                  void $ withStore $ \db -> createIntroReMember db user gInfo memInfo' memRestrictions
+                  void $ withStore $ \db -> createIntroReMember db cxt user gInfo memInfo' memRestrictions
               | otherwise -> do
                   when (memberRole < GRAdmin) $ throwChatError (CEGroupContactRole c)
                   case memChatVRange of
@@ -3050,7 +3045,7 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
                           groupConnIds <- createConn subMode
                           let chatV = maybe (minVersion (vr cxt)) (\peerVR -> vr cxt `peerConnChatVersion` fromChatVRange peerVR) memChatVRange
                           void $ withStore $ \db -> do
-                            reMember <- createIntroReMember db user gInfo memInfo memRestrictions
+                            reMember <- createIntroReMember db cxt user gInfo memInfo memRestrictions
                             createIntroReMemberConn db user m reMember chatV memInfo groupConnIds subMode
                       | otherwise -> messageError "x.grp.mem.intro: member chat version range incompatible"
         _ -> messageError "x.grp.mem.intro can be only sent by host member"
@@ -3085,7 +3080,7 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
             -- member receiving x.grp.mem.fwd should have also received x.grp.mem.new prior to that.
             -- For now, this branch compensates for the lack of delayed message delivery.
             `catchError` \case
-              SEGroupMemberNotFoundByMemberId _ -> createNewGroupMember db user gInfo m memInfo GCPostMember GSMemAnnounced
+              SEGroupMemberNotFoundByMemberId _ -> createNewGroupMember db cxt user gInfo m memInfo GCPostMember GSMemAnnounced
               e -> throwError e
         -- TODO [knocking] separate pending statuses from GroupMemberStatus?
         -- TODO            add GSMemIntroInvitedPending, GSMemConnectedPending, etc.?
@@ -3095,8 +3090,8 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
         pure toMember
       subMode <- chatReadVar subscriptionMode
       -- [incognito] send membership incognito profile, create direct connection as incognito
-      let membershipProfile = redactedMemberProfile allowSimplexLinks $ fromLocalProfile $ memberProfile membership
-          allowSimplexLinks = groupFeatureUserAllowed SGFSimplexLinks gInfo
+      let allowSimplexLinks = groupFeatureUserAllowed SGFSimplexLinks gInfo
+      membershipProfile <- presentUserBadge user (incognitoMembershipProfile gInfo) $ redactedMemberProfile allowSimplexLinks $ fromLocalProfile $ memberProfile membership
       dm <- encodeConnInfo $ XGrpMemInfo membershipMemId membershipProfile
       -- [async agent commands] no continuation needed, but commands should be asynchronous for stability
       groupConnIds <- joinAgentConnectionAsync user Nothing (chatHasNtfs chatSettings) groupConnReq dm subMode
@@ -3184,7 +3179,7 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
             updateGroupMemberStatus db userId membership GSMemRemoved
             when (maybe False (/= RSRejected) (relayOwnStatus gInfo)) $ updateRelayOwnStatus_ db gInfo RSInactive
           let membership' = membership {memberStatus = GSMemRemoved}
-          when withMessages $ deleteMessages gInfo membership'
+          when withMessages $ deleteMessages gInfo membership' SMDSnd
           deleteMemberItem msg gInfo RGEUserDeleted
           toView $ CEvtDeletedMemberUser user gInfo {membership = membership'} m withMessages msgSigned
           pure $ Just DJSGroup {jobSpec = DJRelayRemoved}
@@ -3204,18 +3199,15 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
                     deleteMemberConnection' deletedMember True
                   else deleteMemberConnection deletedMember
                 let deliveryScope = memberEventDeliveryScope deletedMember
-                    deletedMember' = deletedMember {memberStatus = GSMemRemoved}
-                when withMessages $ deleteMessages gInfo deletedMember'
                 gInfo' <- case deliveryScope of
                   -- Keep member record if it's support scope - it will be required for forwarding inside that scope.
                   Just (DJSMemberSupport _) | shouldForward -> updateMemberRecordDeleted user gInfo deletedMember GSMemRemoved
-                  _
-                    | withMessages && groupFeatureMemberAllowed SGFFullDelete m gInfo ->
-                        fullyDeleteMemberRecord user gInfo deletedMember
-                    -- Undeleted "member connected" chat item will prevent deletion of member record.
-                    | otherwise -> deleteOrUpdateMemberRecord user gInfo deletedMember
+                  -- Undeleted "member connected" chat item will prevent deletion of member record.
+                  _ -> deleteOrUpdateMemberRecord user gInfo deletedMember
                 gInfo'' <- updatePublicGroupData user gInfo'
                 let wasDeleted = memberStatus == GSMemRemoved || memberStatus == GSMemLeft
+                    deletedMember' = deletedMember {memberStatus = GSMemRemoved}
+                when withMessages $ deleteMessages gInfo'' deletedMember' SMDRcv
                 -- Clear forwardedByMember if it references the deleted member,
                 -- as the member record was already deleted above.
                 let RcvMessage {forwardedByMember = fwdBy} = msg
@@ -3232,9 +3224,9 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
           (gi', m', scopeInfo) <- mkGroupChatScope gi m
           (ci, cInfo) <- saveRcvChatItemNoParse user (CDGroupRcv gi' scopeInfo m') msg' brokerTs (CIRcvGroupEvent gEvent)
           groupMsgToView cInfo ci
-        deleteMessages :: GroupInfo -> GroupMember -> CM ()
-        deleteMessages gInfo' delMem
-          | groupFeatureMemberAllowed SGFFullDelete m gInfo' = deleteGroupMemberCIs user gInfo' delMem
+        deleteMessages :: MsgDirectionI d => GroupInfo -> GroupMember -> SMsgDirection d -> CM ()
+        deleteMessages gInfo' delMem msgDir
+          | groupFeatureMemberAllowed SGFFullDelete m gInfo' = deleteGroupMemberCIs user gInfo' delMem m msgDir
           | otherwise = markGroupMemberCIsDeleted user gInfo' delMem m
         forwardToMember :: GroupMember -> CM ()
         forwardToMember member =
@@ -3355,10 +3347,10 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
               fromGroupId_ = Just groupId,
               fromGroupMemberId_ = Just (groupMemberId' m),
               fromGroupMemberConnId_ = Just mConnId,
-              groupDirectInvStartedConnection = autoAcceptMemberContacts user
+              groupDirectInvStartedConnection = isTrue $ autoAcceptMemberContacts user
             }
         joinExistingContact subMode mCt@Contact {contactId = mContactId}
-          | autoAcceptMemberContacts user = do
+          | isTrue (autoAcceptMemberContacts user) = do
               (cmdId, acId) <- joinConn subMode
               mCt' <- withStore $ \db -> do
                 updateMemberContactInvited db user mCt groupDirectInv
@@ -3376,7 +3368,7 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
               createInternalChatItem user (CDDirectRcv mCt') (CIRcvDirectEvent $ RDEGroupInvLinkReceived gp) Nothing
               createItems mCt' m
         createNewContact subMode
-          | autoAcceptMemberContacts user = do
+          | isTrue (autoAcceptMemberContacts user) = do
               (cmdId, acId) <- joinConn subMode
               -- [incognito] reuse membership incognito profile
               (mCt, m') <- withStore $ \db -> do
@@ -3398,7 +3390,7 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
               createItems mCt m'
         joinConn subMode = do
           -- [incognito] send membership incognito profile
-          let p = userProfileDirect user (fromLocalProfile <$> incognitoMembershipProfile g) Nothing True
+          p <- presentUserBadge user (incognitoMembershipProfile g) $ userProfileDirect user (fromLocalProfile <$> incognitoMembershipProfile g) Nothing True
           -- TODO PQ should negotitate contact connection with PQSupportOn? (use encodeConnInfoPQ)
           dm <- encodeConnInfo $ XInfo p
           joinAgentConnectionAsync user Nothing True connReq dm subMode
@@ -3423,13 +3415,10 @@ processAgentMessageConn cxt user@User {userId} corrId agentConnId agentMessage =
           unknownRole <- unknownMemberRole gInfo
           let allowCreate = toCMEventTag chatMsgEvent /= XGrpLeave_
           withStore (\db -> getCreateUnknownGMByMemberId db cxt user gInfo memberId memberName unknownRole allowCreate) >>= \case
-            Just (author, unknown)
-              | memberRemoved author ->
-                  logInfo $ "x.grp.msg.forward: ignoring content from removed member, group " <> tshow (groupId' gInfo) <> ", member " <> safeDecodeUtf8 (strEncode memberId) <> ", event " <> tshow (toCMEventTag chatMsgEvent)
-              | otherwise -> do
-                  when unknown $ toView $ CEvtUnknownMemberCreated user gInfo m author
-                  void $ withVerifiedMsg gInfo scopeInfo author parsedMsg msgTs $
-                    (`processForwardedMsg` Just author)
+            Just (author, unknown) -> do
+              when unknown $ toView $ CEvtUnknownMemberCreated user gInfo m author
+              void $ withVerifiedMsg gInfo scopeInfo author parsedMsg msgTs $
+                (`processForwardedMsg` Just author)
             Nothing -> pure ()
         FwdChannel -> processForwardedMsg (VMUnsigned chatMsg) Nothing
       where
@@ -3635,13 +3624,17 @@ runDeliveryTaskWorker a deliveryKey Worker {doWork} = do
                   withStore' $ \db -> setDeliveryTaskErrStatus db (deliveryTaskId task) "relay inactive"
               | otherwise ->
                   withWorkItems a doWork (withStore' $ \db -> getNextDeliveryTasks db gInfo task) $ \nextTasks -> do
-                    let (body_, acceptedTasks, largeTasks) = batchDeliveryTasks1 (vr cxt) maxEncodedMsgLength nextTasks
-                        senderGMIds = S.toList . S.fromList $ map (\MessageDeliveryTask {senderGMId} -> senderGMId) acceptedTasks
+                    let (body, taskIds, largeTaskIds) = batchDeliveryTasks1 (vr cxt) maxEncodedMsgLength nextTasks
                     withStore' $ \db -> do
-                      forM_ body_ $ \body -> createMsgDeliveryJob db gInfo jobScope senderGMIds body
-                      forM_ acceptedTasks $ \t -> updateDeliveryTaskStatus db (deliveryTaskId t) DTSProcessed
-                      forM_ largeTasks $ \t -> setDeliveryTaskErrStatus db (deliveryTaskId t) "large"
-                    when (isJust body_) . lift . void $ getDeliveryJobWorker True deliveryKey
+                      createMsgDeliveryJob db gInfo jobScope (singleSenderGMId_ nextTasks) body
+                      forM_ taskIds $ \taskId -> updateDeliveryTaskStatus db taskId DTSProcessed
+                      forM_ largeTaskIds $ \taskId -> setDeliveryTaskErrStatus db taskId "large"
+                    lift . void $ getDeliveryJobWorker True deliveryKey
+              where
+                singleSenderGMId_ :: NonEmpty MessageDeliveryTask -> Maybe GroupMemberId
+                singleSenderGMId_ (MessageDeliveryTask {senderGMId = senderGMId'} :| ts)
+                  | all (\MessageDeliveryTask {senderGMId} -> senderGMId == senderGMId') ts = Just senderGMId'
+                  | otherwise = Nothing
             -- DJRelayRemoved is allowed when RSInactive - it forwards XGrpMemDel about relay's own deletion
             DJRelayRemoved
               | workerScope /= DWSGroup ->
@@ -3651,7 +3644,7 @@ runDeliveryTaskWorker a deliveryKey Worker {doWork} = do
                       fwd = GrpMsgForward {fwdSender, fwdBrokerTs}
                       body = encodeBinaryBatch [encodeFwdElement fwd verifiedMsg]
                   withStore' $ \db -> do
-                    createMsgDeliveryJob db gInfo jobScope [senderGMId] body
+                    createMsgDeliveryJob db gInfo jobScope (Just senderGMId) body
                     updateDeliveryTaskStatus db (deliveryTaskId task) DTSProcessed
                   lift . void $ getDeliveryJobWorker True deliveryKey
 
@@ -3669,27 +3662,6 @@ getDeliveryJobWorker hasWork deliveryKey = do
   a <- asks smpAgent
   getAgentWorker "delivery_job" hasWork a deliveryKey ws $
     runDeliveryJobWorker a deliveryKey
-
--- TODO [relays] dissemination here is unsigned (relay-asserted profile).
--- Future: members sign an XMember on channel join, relay stores it per
--- member and forwards the signed XMember via this sidecar — enables
--- subscribers to verify member profiles out-of-band without trusting the relay.
-
--- | Encode an XGrpMemNew for first-introduction dissemination as a direct
--- (non-forwarded) batch element. 'Left' when the encoded element wouldn't
--- fit a singleton batch (see 'maxBatchElementSize').
-encodeMemberNew :: VersionRangeChat -> GroupInfo -> GroupMember -> Either ChatError ByteString
-encodeMemberNew vr gInfo member = case encodeChatMessage maxBatchElementSize chatMsg of
-  ECMEncoded bs -> Right bs
-  ECMLarge -> Left $ ChatError $ CEException $ "large profile element for member " <> show (groupMemberId' member)
-  where
-    chatMsg :: ChatMessage 'Json
-    chatMsg =
-      ChatMessage
-        { chatVRange = vr,
-          msgId = Nothing,
-          chatMsgEvent = XGrpMemNew (memberInfo gInfo member) Nothing
-        }
 
 runDeliveryJobWorker :: AgentClient -> DeliveryWorkerKey -> Worker -> CM ()
 runDeliveryJobWorker a deliveryKey Worker {doWork} = do
@@ -3732,10 +3704,7 @@ runDeliveryJobWorker a deliveryKey Worker {doWork} = do
                   deleteGroupConnections user gInfo True
                   withStore' $ \db -> updateDeliveryJobStatus db jobId DJSComplete
           where
-            MessageDeliveryJob {jobId, jobScope, senderGMIds, body, cursorGMId_ = startingCursor} = job
-            singleSenderGMId_ = case senderGMIds of
-              [s] -> Just s
-              _ -> Nothing
+            MessageDeliveryJob {jobId, jobScope, singleSenderGMId_, body, cursorGMId_ = startingCursor} = job
             sendBodyToMembers :: CM ()
             sendBodyToMembers
               -- channel
@@ -3743,88 +3712,16 @@ runDeliveryJobWorker a deliveryKey Worker {doWork} = do
                   -- there's no member review in channels, so job spec includePending is ignored
                   DJSGroup {} -> do
                     bucketSize <- asks $ deliveryBucketSize . config
-                    senders <- withStore' $ \db ->
-                      fmap catMaybes . forM senderGMIds $ \sId ->
-                        fmap eitherToMaybe . runExceptT $ do
-                          sender <- getNonRemovedMemberById db cxt user sId
-                          vec <- getMemberRelationsVector db sender
-                          pure (sender, vec)
-                    let missingSenders = length senderGMIds - length senders
-                    when (missingSenders > 0) $
-                      logInfo $ "delivery job " <> tshow jobId <> ": " <> tshow missingSenders <> " senders missing; skipping their profile prepend"
-                    -- Small profiles ride inline (extBody); the rest spill
-                    -- into standalone batches that ship before the body.
-                    (extBody, inBodySenders, overflowBatches, activeSenders) <-
-                      if null senders
-                        then pure (body, [], [], [])
-                        else do
-                          -- Skip role > GRMember (mirrors xGrpMemNew gate).
-                          -- TODO [relays] public groups: revisit if mods/admins are introduced via this sidecar.
-                          let (encoderErrs, validLabeled) =
-                                partitionEithers
-                                  [ (\bs -> (s, bs)) <$> encodeMemberNew (vr cxt) gInfo s
-                                  | (s, _) <- senders, memberRole' s <= GRMember
-                                  ]
-                              (extBody', inBody, overflowLabeled, large1) = batchProfilesWithBody maxEncodedMsgLength body validLabeled
-                              (overflowBatches', large2) = batchProfiles maxEncodedMsgLength overflowLabeled
-                              packerErrs = [ChatError (CEInternalError $ "oversized profile element for member " <> show (groupMemberId' s)) | s <- large1 <> large2]
-                              allErrs = encoderErrs <> packerErrs
-                          unless (null allErrs) $ do
-                            logInfo $ "delivery job " <> tshow jobId <> ": dropping " <> tshow (length allErrs) <> " oversized profile element(s)"
-                            toView $ CEvtChatErrors allErrs
-                          let active = inBody <> concatMap snd overflowBatches'
-                          pure (extBody', inBody, overflowBatches', active)
-                    -- Per-job constants — independent of the cursor page in sendLoop.
-                    let senderVec = M.fromList [(groupMemberId' s, v) | (s, v) <- senders]
-                        -- Body IDs: 0 = plain body, 1 = extBody, 2.. = overflow batches in order.
-                        overflowWithIds = zip [2 :: Int ..] overflowBatches
-                    sendLoop bucketSize startingCursor senderVec overflowWithIds inBodySenders extBody activeSenders
+                    sendLoop bucketSize startingCursor
                     where
-                      sendLoop :: Int -> Maybe GroupMemberId -> Map GroupMemberId ByteString -> [(Int, (ByteString, [GroupMember]))] -> [GroupMember] -> ByteString -> [GroupMember] -> CM ()
-                      sendLoop bucketSize cursorGMId_ senderVec overflowWithIds inBodySenders extBody activeSenders = do
+                      sendLoop :: Int -> Maybe GroupMemberId -> CM ()
+                      sendLoop bucketSize cursorGMId_ = do
                         mems <- withStore' $ \db -> getGroupMembersByCursor db cxt user gInfo cursorGMId_ singleSenderGMId_ bucketSize
                         unless (null mems) $ do
-                          let msgReqs = buildMsgReqs mems
-                          unless (null msgReqs) $ void $ withAgent (`sendMessages` msgReqs)
-                          -- Mark only (sender, recipient) pairs where the bit was MRNew —
-                          -- skip recipients already MRIntroduced (steady-case savings).
-                          let readyMems = [m | m <- mems, isJust (readyMemberConn m)]
-                              markFor sender = do
-                                vec <- M.lookup (groupMemberId' sender) senderVec
-                                let ms = [(indexInGroup r, (IDSubjectIntroduced, MRIntroduced)) | r <- readyMems, getRelation (indexInGroup r) vec == MRNew]
-                                if null ms then Nothing else Just (sender, ms)
-                              senderMarks = mapMaybe markFor activeSenders
-                          unless (null senderMarks) $
-                            withStore' $ \db ->
-                              forM_ senderMarks $ \(sender, ms) ->
-                                setMemberVectorNewRelations db sender ms
+                          deliver body mems
                           let cursorGMId' = groupMemberId' $ last mems
                           withStore' $ \db -> updateDeliveryJobCursor db jobId cursorGMId'
-                          unless (length mems < bucketSize) $
-                            sendLoop bucketSize (Just cursorGMId') senderVec overflowWithIds inBodySenders extBody activeSenders
-                        where
-                          -- First recipient needing body i carries VRValue (Just i); rest use VRRef i.
-                          -- First piece per connection: aConnId; rest: empty (agent convention).
-                          buildMsgReqs :: [GroupMember] -> [MsgReq]
-                          buildMsgReqs mems = reverse . snd $ foldl' addRecipient (IS.empty, []) mems
-                            where
-                              addRecipient acc r = case readyMemberConn r of
-                                Just (_, conn) -> snd $ foldl' (addPiece conn) (0 :: Int, acc) (recipientBodyPieces r)
-                                Nothing -> acc
-                              addPiece conn (k, (issued, reqs)) (bid, msgBody) =
-                                let vor
-                                      | IS.member bid issued = VRRef bid
-                                      | otherwise = VRValue (Just bid) msgBody
-                                    issued' = IS.insert bid issued
-                                    connId = if k == 0 then aConnId conn else B.empty
-                                 in (k + 1, (issued', (connId, PQEncOff, MsgFlags False, vor) : reqs))
-                              recipientBodyPieces r =
-                                [(i, b) | (i, (b, ss)) <- overflowWithIds, any missing ss]
-                                  <> [if any missing inBodySenders then (1, extBody) else (0, body)]
-                                where
-                                  missing s = case M.lookup (groupMemberId' s) senderVec of
-                                    Just vec -> getRelation (indexInGroup r) vec == MRNew
-                                    Nothing -> True
+                          unless (length mems < bucketSize) $ sendLoop bucketSize (Just cursorGMId')
                   DJSMemberSupport scopeGMId -> do
                     -- for member support scope we just load all recipients in one go, without cursor
                     modMs <- withStore' $ \db -> getGroupModerators db cxt user gInfo
@@ -3843,8 +3740,8 @@ runDeliveryJobWorker a deliveryKey Worker {doWork} = do
               -- fully connected group
               | otherwise = case singleSenderGMId_ of
                   Nothing -> throwChatError $ CEInternalError "delivery job worker: singleSenderGMId is required when not using relays"
-                  Just sId -> do
-                    sender <- withStore $ \db -> getGroupMemberById db cxt user sId
+                  Just singleSenderGMId -> do
+                    sender <- withStore $ \db -> getGroupMemberById db cxt user singleSenderGMId
                     ms <- buildMemberList sender
                     unless (null ms) $ deliver body ms
                     where

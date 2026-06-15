@@ -49,6 +49,7 @@ import Data.Time.Clock.System (systemToUTCTime, utcToSystemTime)
 import Data.Type.Equality
 import Data.Typeable (Typeable)
 import Data.Word (Word32)
+import Simplex.Chat.Badges (LocalBadge)
 import Simplex.Chat.Call
 import Simplex.Chat.Options.DB (FromField (..), ToField (..))
 import Simplex.Chat.Types
@@ -1261,8 +1262,10 @@ requiresSignature = \case
   XInfo_ -> True
   _ -> False
 
--- TODO [relays] can be tightened — sender keys are now disseminated via
--- TODO   prepended XGrpMemNew before forwarded XInfo/XGrpLeave reach the recipient.
+-- TODO [relays] relay: vectors tracking which members received which other member profiles/keys.
+-- TODO   - don't forward XGrpLeave/XInfo to members who haven't seen sender's profile/key.
+-- TODO   - unverifiedAllowed is a temporary workaround postponing targeted event forwarding.
+
 -- Allow signed but unverified XGrpLeave/XInfo between subscribers when sender's key is unknown.
 -- Owner keys are always known, so subscribers are required to verify from owners.
 -- Likewise, subscriber keys are always known to owners, so owners are required to verify from subscribers.
@@ -1481,7 +1484,10 @@ instance FromField (ChatMessage 'Json) where
 data ContactShortLinkData = ContactShortLinkData
   { profile :: Profile,
     message :: Maybe MsgContent,
-    business :: Bool
+    business :: Bool,
+    -- set by the receiving client for the UI: the link profile's badge, verified and crypto-free.
+    -- never part of the published link data (the link carries the proof inside profile).
+    localBadge :: Maybe LocalBadge
   }
   deriving (Show)
 

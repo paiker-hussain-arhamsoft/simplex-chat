@@ -65,7 +65,7 @@ module Simplex.Chat.Store.Messages
     updateGroupCIMentions,
     deleteGroupChatItem,
     updateGroupChatItemModerated,
-    deleteMemberCIs,
+    updateMemberCIsModerated,
     updateGroupCIBlockedByAdmin,
     markGroupChatItemDeleted,
     markMemberCIsDeleted,
@@ -211,19 +211,9 @@ getGroupFileInfo db User {userId} GroupInfo {groupId} =
     <$> DB.query db (fileInfoQuery <> " WHERE i.user_id = ? AND i.group_id = ?") (userId, groupId)
 
 getGroupMemberFileInfo :: DB.Connection -> User -> GroupInfo -> GroupMember -> IO [CIFileInfo]
-getGroupMemberFileInfo db User {userId} GroupInfo {groupId, membership} member
-  | groupMemberId' member == groupMemberId' membership =
-      map toFileInfo
-        <$> DB.query
-          db
-          (fileInfoQuery <> " WHERE i.user_id = ? AND i.group_id = ? AND i.group_member_id IS NULL AND i.item_sent = 1")
-          (userId, groupId)
-  | otherwise =
-      map toFileInfo
-        <$> DB.query
-          db
-          (fileInfoQuery <> " WHERE i.user_id = ? AND i.group_id = ? AND i.group_member_id = ?")
-          (userId, groupId, groupMemberId' member)
+getGroupMemberFileInfo db User {userId} GroupInfo {groupId} GroupMember {groupMemberId} =
+  map toFileInfo
+    <$> DB.query db (fileInfoQuery <> " WHERE i.user_id = ? AND i.group_id = ? AND i.group_member_id = ?") (userId, groupId, groupMemberId)
 
 deleteGroupChatItemsMessages :: DB.Connection -> User -> GroupInfo -> IO ()
 deleteGroupChatItemsMessages db User {userId} GroupInfo {groupId} = do
@@ -662,7 +652,8 @@ insertChatItemMessage_ :: DB.Connection -> ChatItemId -> MessageId -> UTCTime ->
 insertChatItemMessage_ db ciId msgId ts = DB.execute db "INSERT INTO chat_item_messages (chat_item_id, message_id, created_at, updated_at) VALUES (?,?,?,?)" (ciId, msgId, ts, ts)
 
 getChatItemQuote_ :: ChatTypeQuotable c => DB.Connection -> User -> ChatDirection c 'MDRcv -> QuotedMsg -> IO (CIQuote c)
-getChatItemQuote_ db User {userId, userContactId} chatDirection QuotedMsg {msgRef = MsgRef {msgId, sentAt, sent, memberId}, content} =
+getChatItemQuote_ db User {userId, userContactId} chatDirection QuotedMsg {msgRef = MsgRef {msgId, sentAt, sent, memberId}, content} = do
+  currentTs <- getCurrentTime
   case chatDirection of
     CDDirectRcv Contact {contactId} -> getDirectChatItemQuote_ contactId (not sent)
     CDGroupRcv GroupInfo {groupId, membership = GroupMember {memberId = userMemberId}} _s sender@GroupMember {groupMemberId = senderGMId, memberId = senderMemberId} ->
@@ -670,13 +661,13 @@ getChatItemQuote_ db User {userId, userContactId} chatDirection QuotedMsg {msgRe
         Just mId
           | mId == userMemberId -> (`ciQuote` CIQGroupSnd) <$> getUserGroupChatItemId_ groupId
           | mId == senderMemberId -> (`ciQuote` CIQGroupRcv (Just sender)) <$> getGroupChatItemId_ groupId senderGMId
-          | otherwise -> getGroupChatItemQuote_ groupId mId
+          | otherwise -> getGroupChatItemQuote_ currentTs groupId mId
         _ -> pure . ciQuote Nothing $ CIQGroupRcv Nothing
     CDChannelRcv GroupInfo {groupId, membership = GroupMember {memberId = userMemberId}} _s ->
       case memberId of
         Just mId
           | mId == userMemberId -> (`ciQuote` CIQGroupSnd) <$> getUserGroupChatItemId_ groupId
-          | otherwise -> getGroupChatItemQuote_ groupId mId
+          | otherwise -> getGroupChatItemQuote_ currentTs groupId mId
         _ -> pure . ciQuote Nothing $ CIQGroupRcv Nothing
   where
     ciQuote :: Maybe ChatItemId -> CIQDirection c -> CIQuote c
@@ -705,8 +696,8 @@ getChatItemQuote_ db User {userId, userContactId} chatDirection QuotedMsg {msgRe
           db
           "SELECT chat_item_id FROM chat_items WHERE user_id = ? AND group_id = ? AND shared_msg_id = ? AND item_sent = ? AND group_member_id = ?"
           (userId, groupId, msgId, MDRcv, groupMemberId)
-    getGroupChatItemQuote_ :: Int64 -> MemberId -> IO (CIQuote 'CTGroup)
-    getGroupChatItemQuote_ groupId mId = do
+    getGroupChatItemQuote_ :: UTCTime -> Int64 -> MemberId -> IO (CIQuote 'CTGroup)
+    getGroupChatItemQuote_ currentTs groupId mId = do
       ciQuoteGroup
         <$> DB.query
           db
@@ -716,6 +707,7 @@ getChatItemQuote_ db User {userId, userContactId} chatDirection QuotedMsg {msgRe
               m.group_member_id, m.group_id, m.index_in_group, m.member_id, m.peer_chat_min_version, m.peer_chat_max_version, m.member_role, m.member_category,
               m.member_status, m.show_messages, m.member_restriction, m.invited_by, m.invited_by_group_member_id, m.local_display_name, m.contact_id, m.contact_profile_id, p.contact_profile_id,
               p.display_name, p.full_name, p.short_descr, p.image, p.contact_link, p.chat_peer_type, p.local_alias, p.preferences,
+              p.badge_proof, p.badge_pres_header, p.badge_expiry, p.badge_type, p.badge_verified, p.badge_extra, p.badge_master_key, p.badge_signature, p.badge_key_idx,
               m.created_at, m.updated_at,
               m.support_chat_ts, m.support_chat_items_unread, m.support_chat_items_member_attention, m.support_chat_items_mentions, m.support_chat_last_msg_from_member_ts, m.member_pub_key, m.relay_link
             FROM group_members m
@@ -731,7 +723,7 @@ getChatItemQuote_ db User {userId, userContactId} chatDirection QuotedMsg {msgRe
       where
         ciQuoteGroup :: [Only (Maybe ChatItemId) :. GroupMemberRow] -> CIQuote 'CTGroup
         ciQuoteGroup [] = ciQuote Nothing $ CIQGroupRcv Nothing
-        ciQuoteGroup ((Only itemId :. memberRow) : _) = ciQuote itemId . CIQGroupRcv . Just $ toGroupMember userContactId memberRow
+        ciQuoteGroup ((Only itemId :. memberRow) : _) = ciQuote itemId . CIQGroupRcv . Just $ toGroupMember currentTs userContactId memberRow
 
 getChatPreviews :: DB.Connection -> StoreCxt -> User -> Bool -> PaginationByTime -> ChatListQuery -> IO [Either StoreError AChat]
 getChatPreviews db cxt user withPCC pagination query = do
@@ -1121,22 +1113,25 @@ toLocalChatItem currentTs ((itemId, itemTs, AMsgDirection msgDir, itemContentTex
     ciTimed = timedTTL >>= \ttl -> Just CITimed {ttl, deleteAt = timedDeleteAt}
 
 getContactRequestChatPreviews_ :: DB.Connection -> User -> PaginationByTime -> ChatListQuery -> IO [AChatPreviewData]
-getContactRequestChatPreviews_ db User {userId} pagination clq = case clq of
-  CLQFilters {favorite = False, unread = False} -> map toPreview <$> getPreviews ""
-  CLQFilters {favorite = True, unread = False} -> pure []
-  CLQFilters {favorite = False, unread = True} -> map toPreview <$> getPreviews ""
-  CLQFilters {favorite = True, unread = True} -> map toPreview <$> getPreviews ""
-  CLQSearch {search} -> map toPreview <$> getPreviews search
+getContactRequestChatPreviews_ db User {userId} pagination clq = do
+  currentTs <- getCurrentTime
+  case clq of
+    CLQFilters {favorite = False, unread = False} -> map (toPreview currentTs) <$> getPreviews ""
+    CLQFilters {favorite = True, unread = False} -> pure []
+    CLQFilters {favorite = False, unread = True} -> map (toPreview currentTs) <$> getPreviews ""
+    CLQFilters {favorite = True, unread = True} -> map (toPreview currentTs) <$> getPreviews ""
+    CLQSearch {search} -> map (toPreview currentTs) <$> getPreviews search
   where
     query =
       [sql|
         SELECT
           cr.contact_request_id, cr.local_display_name, cr.agent_invitation_id,
           cr.contact_id, cr.business_group_id, cr.user_contact_link_id,
-          cr.contact_profile_id, p.display_name, p.full_name, p.short_descr, p.image, p.contact_link, p.chat_peer_type, cr.xcontact_id,
+          cr.contact_profile_id, p.display_name, p.full_name, p.short_descr, p.image, p.contact_link, p.chat_peer_type, p.local_alias, cr.xcontact_id,
           cr.pq_support, cr.welcome_shared_msg_id, cr.request_shared_msg_id, p.preferences,
           cr.created_at, cr.updated_at,
-          cr.peer_chat_min_version, cr.peer_chat_max_version
+          cr.peer_chat_min_version, cr.peer_chat_max_version,
+          p.badge_proof, p.badge_pres_header, p.badge_expiry, p.badge_type, p.badge_verified, p.badge_extra, p.badge_master_key, p.badge_signature, p.badge_key_idx
         FROM contact_requests cr
         JOIN contact_profiles p ON p.contact_profile_id = cr.contact_profile_id
         JOIN user_contact_links uc ON uc.user_contact_link_id = cr.user_contact_link_id
@@ -1158,9 +1153,9 @@ getContactRequestChatPreviews_ db User {userId} pagination clq = case clq of
       PTLast count -> DB.query db (query <> " ORDER BY cr.updated_at DESC LIMIT ?") (params search :. Only count)
       PTAfter ts count -> DB.query db (query <> " AND cr.updated_at > ? ORDER BY cr.updated_at ASC LIMIT ?") (params search :. (ts, count))
       PTBefore ts count -> DB.query db (query <> " AND cr.updated_at < ? ORDER BY cr.updated_at DESC LIMIT ?") (params search :. (ts, count))
-    toPreview :: ContactRequestRow -> AChatPreviewData
-    toPreview cReqRow =
-      let cReq@UserContactRequest {updatedAt} = toContactRequest cReqRow
+    toPreview :: UTCTime -> ContactRequestRow -> AChatPreviewData
+    toPreview now cReqRow =
+      let cReq@UserContactRequest {updatedAt} = toContactRequest now cReqRow
           aChat = AChat SCTContactRequest $ Chat (ContactRequest cReq) [] emptyChatStats
        in ACPD SCTContactRequest $ ContactRequestPD updatedAt aChat
 
@@ -2368,9 +2363,9 @@ toGroupChatItem
     ) = do
     chatItem $ fromRight invalid $ dbParseACIContent itemContentText
     where
-      member_ = toMaybeGroupMember userContactId memberRow_
-      quotedMember_ = toMaybeGroupMember userContactId quotedMemberRow_
-      deletedByGroupMember_ = toMaybeGroupMember userContactId deletedByGroupMemberRow_
+      member_ = toMaybeGroupMember currentTs userContactId memberRow_
+      quotedMember_ = toMaybeGroupMember currentTs userContactId quotedMemberRow_
+      deletedByGroupMember_ = toMaybeGroupMember currentTs userContactId deletedByGroupMemberRow_
       invalid = ACIContent msgDir $ CIInvalidJSON itemContentText
       chatItem itemContent = case (itemContent, itemStatus, member_, fileStatus_) of
         (ACIContent SMDSnd ciContent, ACIStatus SMDSnd ciStatus, _, Just (AFS SMDSnd fileStatus)) ->
@@ -2824,60 +2819,39 @@ updateGroupChatItemModerated db User {userId} GroupInfo {groupId} ci m@GroupMemb
       (deletedTs, groupMemberId, toContent, toText, currentTs, userId, groupId, itemId)
   pure ci {content = toContent, meta = (meta ci) {itemText = toText, itemDeleted = Just (CIModerated (Just deletedTs) m), editable = False, deletable = False}, formattedText = Nothing}
 
-deleteMemberCIs :: DB.Connection -> User -> GroupInfo -> GroupMember -> IO ()
-deleteMemberCIs db User {userId} GroupInfo {groupId, membership} member = do
-  items <- selectItems
-  let itemMemberId = memberId' member
+updateMemberCIsModerated :: MsgDirectionI d => DB.Connection -> User -> GroupInfo -> GroupMember -> GroupMember -> SMsgDirection d -> UTCTime -> IO ()
+updateMemberCIsModerated db User {userId} GroupInfo {groupId, membership} member byGroupMember md deletedTs = do
+  itemIds <- updateCIs =<< getCurrentTime
 #if defined(dbPostgres)
-  let itemIds = map fst items
-      sharedMsgIds = mapMaybe snd items
-  unless (null itemIds) $ do
-    DB.execute
-      db
-      [sql|
-        DELETE FROM messages WHERE message_id IN (
-          SELECT message_id FROM chat_item_messages WHERE chat_item_id IN ?
-        )
-      |]
-      (Only (In itemIds))
-    DB.execute db "DELETE FROM chat_item_versions WHERE chat_item_id IN ?" (Only (In itemIds))
-  unless (null sharedMsgIds) $
-    DB.execute
-      db
-      "DELETE FROM chat_item_reactions WHERE group_id = ? AND shared_msg_id IN ? AND item_member_id IS NOT DISTINCT FROM ?"
-      (groupId, In sharedMsgIds, itemMemberId)
-  unless (null itemIds) $
-    DB.execute
-      db
-      "DELETE FROM chat_items WHERE user_id = ? AND group_id = ? AND chat_item_id IN ?"
-      (userId, groupId, In itemIds)
+  let inItemIds = Only $ In (map fromOnly itemIds)
+  DB.execute db "DELETE FROM messages WHERE message_id IN (SELECT message_id FROM chat_item_messages WHERE chat_item_id IN ?)" inItemIds
+  DB.execute db "DELETE FROM chat_item_versions WHERE chat_item_id IN ?" inItemIds
 #else
-  forM_ items $ \(itemId, itemSharedMsgId_) -> do
-    deleteChatItemMessages_ db itemId
-    deleteChatItemVersions_ db itemId
-    forM_ itemSharedMsgId_ $ \sharedMsgId ->
-      DB.execute
-        db
-        "DELETE FROM chat_item_reactions WHERE group_id = ? AND shared_msg_id = ? AND item_member_id IS NOT DISTINCT FROM ?"
-        (groupId, sharedMsgId, itemMemberId)
-    DB.execute
-      db
-      "DELETE FROM chat_items WHERE user_id = ? AND group_id = ? AND chat_item_id = ?"
-      (userId, groupId, itemId)
+  DB.executeMany db deleteChatItemMessagesQuery itemIds
+  DB.executeMany db "DELETE FROM chat_item_versions WHERE chat_item_id = ?" itemIds
 #endif
   where
-    selectItems :: IO [(ChatItemId, Maybe SharedMsgId)]
-    selectItems
-      | groupMemberId' member == groupMemberId' membership =
+    memId = groupMemberId' member
+    updateQuery =
+      [sql|
+        UPDATE chat_items
+        SET item_deleted = 1, item_deleted_ts = ?, item_deleted_by_group_member_id = ?, item_content = ?, item_text = ?, updated_at = ?
+        WHERE user_id = ? AND group_id = ?
+      |]
+    updateCIs :: UTCTime -> IO [Only Int64]
+    updateCIs currentTs
+      | memId == groupMemberId' membership =
           DB.query
             db
-            "SELECT chat_item_id, shared_msg_id FROM chat_items WHERE user_id = ? AND group_id = ? AND group_member_id IS NULL AND item_sent = 1"
-            (userId, groupId)
+            (updateQuery <> " AND group_member_id IS NULL AND item_sent = 1 RETURNING chat_item_id")
+            (columns :. (userId, groupId))
       | otherwise =
           DB.query
             db
-            "SELECT chat_item_id, shared_msg_id FROM chat_items WHERE user_id = ? AND group_id = ? AND group_member_id = ?"
-            (userId, groupId, groupMemberId' member)
+            (updateQuery <> " AND group_member_id = ? RETURNING chat_item_id")
+            (columns :. (userId, groupId, memId))
+      where
+        columns = (deletedTs, groupMemberId' byGroupMember, msgDirToModeratedContent_ md, ciModeratedText, currentTs)
 
 updateGroupCIBlockedByAdmin :: DB.Connection -> User -> GroupInfo -> ChatItem 'CTGroup d -> UTCTime -> IO (ChatItem 'CTGroup d)
 updateGroupCIBlockedByAdmin db User {userId} GroupInfo {groupId} ci deletedTs = do
@@ -3067,6 +3041,7 @@ getGroupChatItem db User {userId, userContactId} groupId itemId = ExceptT $ do
             m.group_member_id, m.group_id, m.index_in_group, m.member_id, m.peer_chat_min_version, m.peer_chat_max_version, m.member_role, m.member_category,
             m.member_status, m.show_messages, m.member_restriction, m.invited_by, m.invited_by_group_member_id, m.local_display_name, m.contact_id, m.contact_profile_id, p.contact_profile_id,
             p.display_name, p.full_name, p.short_descr, p.image, p.contact_link, p.chat_peer_type, p.local_alias, p.preferences,
+            p.badge_proof, p.badge_pres_header, p.badge_expiry, p.badge_type, p.badge_verified, p.badge_extra, p.badge_master_key, p.badge_signature, p.badge_key_idx,
             m.created_at, m.updated_at,
             m.support_chat_ts, m.support_chat_items_unread, m.support_chat_items_member_attention, m.support_chat_items_mentions, m.support_chat_last_msg_from_member_ts, m.member_pub_key, m.relay_link,
             -- quoted ChatItem
@@ -3075,12 +3050,14 @@ getGroupChatItem db User {userId, userContactId} groupId itemId = ExceptT $ do
             rm.group_member_id, rm.group_id, rm.index_in_group, rm.member_id, rm.peer_chat_min_version, rm.peer_chat_max_version, rm.member_role, rm.member_category,
             rm.member_status, rm.show_messages, rm.member_restriction, rm.invited_by, rm.invited_by_group_member_id, rm.local_display_name, rm.contact_id, rm.contact_profile_id, rp.contact_profile_id,
             rp.display_name, rp.full_name, rp.short_descr, rp.image, rp.contact_link, rp.chat_peer_type, rp.local_alias, rp.preferences,
+            rp.badge_proof, rp.badge_pres_header, rp.badge_expiry, rp.badge_type, rp.badge_verified, rp.badge_extra, rp.badge_master_key, rp.badge_signature, rp.badge_key_idx,
             rm.created_at, rm.updated_at,
             rm.support_chat_ts, rm.support_chat_items_unread, rm.support_chat_items_member_attention, rm.support_chat_items_mentions, rm.support_chat_last_msg_from_member_ts, rm.member_pub_key, rm.relay_link,
             -- deleted by GroupMember
             dbm.group_member_id, dbm.group_id, dbm.index_in_group, dbm.member_id, dbm.peer_chat_min_version, dbm.peer_chat_max_version, dbm.member_role, dbm.member_category,
             dbm.member_status, dbm.show_messages, dbm.member_restriction, dbm.invited_by, dbm.invited_by_group_member_id, dbm.local_display_name, dbm.contact_id, dbm.contact_profile_id, dbp.contact_profile_id,
             dbp.display_name, dbp.full_name, dbp.short_descr, dbp.image, dbp.contact_link, dbp.chat_peer_type, dbp.local_alias, dbp.preferences,
+            dbp.badge_proof, dbp.badge_pres_header, dbp.badge_expiry, dbp.badge_type, dbp.badge_verified, dbp.badge_extra, dbp.badge_master_key, dbp.badge_signature, dbp.badge_key_idx,
             dbm.created_at, dbm.updated_at,
             dbm.support_chat_ts, dbm.support_chat_items_unread, dbm.support_chat_items_member_attention, dbm.support_chat_items_mentions, dbm.support_chat_last_msg_from_member_ts, dbm.member_pub_key, dbm.relay_link
           FROM chat_items i
