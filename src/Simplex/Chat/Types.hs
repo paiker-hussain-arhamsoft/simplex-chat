@@ -137,19 +137,17 @@ data User = User
     showNtfs :: Bool,
     sendRcptsContacts :: Bool,
     sendRcptsSmallGroups :: Bool,
-    autoAcceptMemberContacts :: Bool,
+    autoAcceptMemberContacts :: BoolDef,
     userMemberProfileUpdatedAt :: Maybe UTCTime,
-    userChatRelay :: BoolDef,
-    clientService :: BoolDef,
-    uiThemes :: Maybe UIThemeEntityOverrides
+    uiThemes :: Maybe UIThemeEntityOverrides,
+    userChatRelay :: BoolDef
   }
   deriving (Show)
 
 data NewUser = NewUser
   { profile :: Maybe Profile,
     pastTimestamp :: Bool,
-    userChatRelay :: BoolDef,
-    clientService :: BoolDef
+    userChatRelay :: Bool
   }
   deriving (Show)
 
@@ -881,13 +879,8 @@ instance FromJSON ImageData where
   parseJSON = fmap ImageData . J.parseJSON
 
 instance ToJSON ImageData where
-  toJSON (ImageData t) = J.toJSON $ safeImageData t
-  toEncoding (ImageData t) = J.toEncoding $ safeImageData t
-
-safeImageData :: Text -> Text
-safeImageData t
-  | "data:" `T.isPrefixOf` t = t
-  | otherwise = ""
+  toJSON (ImageData t) = J.toJSON t
+  toEncoding (ImageData t) = J.toEncoding t
 
 instance ToField ImageData where toField (ImageData t) = toField t
 

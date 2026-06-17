@@ -68,7 +68,7 @@ private fun HiddenProfileLayout(
     val passwordValid by remember { derivedStateOf { hidePassword.value == hidePassword.value.trim() } }
     val confirmValid by remember { derivedStateOf { confirmHidePassword.value == "" || hidePassword.value == confirmHidePassword.value } }
     val saveDisabled by remember { derivedStateOf { hidePassword.value == "" || !passwordValid || confirmHidePassword.value == "" || !confirmValid } }
-    SectionView(stringResource(MR.strings.hidden_profile_password)) {
+    SectionView(stringResource(MR.strings.hidden_profile_password).uppercase()) {
       SectionItemViewWithoutMinPadding {
         PassphraseField(hidePassword, generalGetString(MR.strings.password_to_show), isValid = { passwordValid }, showStrength = true)
       }

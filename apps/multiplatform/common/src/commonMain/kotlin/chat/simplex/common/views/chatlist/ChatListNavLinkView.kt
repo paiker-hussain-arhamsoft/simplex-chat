@@ -583,7 +583,7 @@ fun ContactConnectionMenuItems(rhId: Long?, chatInfo: ChatInfo.ContactConnection
     onClick = {
       ModalManager.center.closeModals()
       ModalManager.end.closeModals()
-      ModalManager.center.showModalCloseable(settings = true, showClose = appPlatform.isAndroid, cardScreen = true) { close ->
+      ModalManager.center.showModalCloseable(true, showClose = appPlatform.isAndroid) { close ->
         ContactConnectionInfoView(chatModel, rhId, chatInfo.contactConnection.connLinkInv, chatInfo.contactConnection, true, close)
       }
       showMenu.value = false
@@ -772,11 +772,10 @@ fun rejectContactRequest(rhId: Long?, contactRequestId: Long, chatModel: ChatMod
 fun deleteContactConnectionAlert(rhId: Long?, connection: PendingContactConnection, chatModel: ChatModel, onSuccess: () -> Unit) {
   AlertManager.shared.showAlertDialog(
     title = generalGetString(MR.strings.delete_pending_connection__question),
-    text = "${connection.displayName}\n\n" + generalGetString(
+    text = generalGetString(
       if (connection.initiated) MR.strings.contact_you_shared_link_with_wont_be_able_to_connect
       else MR.strings.connection_you_accepted_will_be_cancelled
     ),
-    parseHtml = false,
     confirmText = generalGetString(MR.strings.delete_verb),
     onConfirm = {
       withBGApi {
