@@ -1,21 +1,27 @@
 package chat.simplex.common.views.usersettings
 
 import SectionView
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import chat.simplex.common.model.ChatController.appPrefs
 import chat.simplex.common.model.ChatModel
-import chat.simplex.common.platform.*
+import chat.simplex.common.platform.AppUpdatesChannel
+import chat.simplex.common.ui.theme.DEFAULT_PADDING_HALF
 import chat.simplex.common.views.helpers.*
 import chat.simplex.res.MR
 import dev.icerock.moko.resources.compose.painterResource
 import dev.icerock.moko.resources.compose.stringResource
 
 @Composable
-actual fun AdvancedSettingsAppSection(
+actual fun SettingsSectionApp(
   showSettingsModal: (@Composable (ChatModel) -> Unit) -> (() -> Unit),
-  withAuth: (title: String, desc: String, block: () -> Unit) -> Unit,
+  showVersion: () -> Unit,
+  withAuth: (title: String, desc: String, block: () -> Unit) -> Unit
 ) {
-  SectionView {
+  SectionView(stringResource(MR.strings.settings_section_title_app)) {
     SettingsActionItem(painterResource(MR.images.ic_code), stringResource(MR.strings.settings_developer_tools), showSettingsModal { DeveloperView(withAuth) })
     val selectedChannel = remember { appPrefs.appUpdateChannel.state }
     val values = AppUpdatesChannel.entries.map { it to it.text }
@@ -23,8 +29,6 @@ actual fun AdvancedSettingsAppSection(
       appPrefs.appUpdateChannel.set(it)
       setupUpdateChecker()
     }
+    AppVersionItem(showVersion)
   }
 }
-
-@Composable
-actual fun AppShutdownItem() {}

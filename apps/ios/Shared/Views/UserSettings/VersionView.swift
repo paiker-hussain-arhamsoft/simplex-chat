@@ -10,33 +10,21 @@ import SwiftUI
 import SimpleXChat
 
 struct VersionView: View {
-    @EnvironmentObject var theme: AppTheme
     @State var versionInfo: CoreVersionInfo?
 
     var body: some View {
-        List {
-            Section {
-                Text("App version: v\(appVersion ?? "?")")
-                Text("App build: \(appBuild ?? "?")")
-                if let info = versionInfo {
-                    Text("Core version: v\(info.version)")
-                    if let v = try? AttributedString(markdown: "simplexmq: v\(info.simplexmqVersion) ([\(info.simplexmqCommit.prefix(7))](https://github.com/simplex-chat/simplexmq/commit/\(info.simplexmqCommit)))") {
-                        Text(v)
-                    }
-                }
-            }
-
-            Section {
-                NavigationLink {
-                    DeveloperView()
-                        .navigationTitle("Developer")
-                        .modifier(ThemedBackground(grouped: true))
-                } label: {
-                    Text("Developer")
+        VStack(alignment: .leading) {
+            Text("App version: v\(appVersion ?? "?")")
+            Text("App build: \(appBuild ?? "?")")
+            if let info = versionInfo {
+                Text("Core version: v\(info.version)")
+                if let v = try? AttributedString(markdown: "simplexmq: v\(info.simplexmqVersion) ([\(info.simplexmqCommit.prefix(7))](https://github.com/simplex-chat/simplexmq/commit/\(info.simplexmqCommit)))") {
+                    Text(v)
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding()
         .onAppear {
             do {
                 versionInfo = try apiGetVersion()
