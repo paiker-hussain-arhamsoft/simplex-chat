@@ -569,7 +569,7 @@ struct ChatInfoView: View {
     private func clearChatAlert() -> Alert {
         Alert(
             title: Text("Clear conversation?"),
-            message: Text(chat.chatInfo.displayName + "\n\n") + Text("All messages will be deleted - this cannot be undone! The messages will be deleted ONLY for you."),
+            message: Text("All messages will be deleted - this cannot be undone! The messages will be deleted ONLY for you."),
             primaryButton: .destructive(Text("Clear")) {
                 Task {
                     await clearChat(chat)
@@ -1177,7 +1177,6 @@ private func deleteContactOrConversationDialog(
     showActionSheet(SomeActionSheet(
         actionSheet: ActionSheet(
             title: Text("Delete contact?"),
-            message: Text(contact.displayName),
             buttons: [
                 .destructive(Text("Only delete conversation")) {
                     deleteContactMaybeErrorAlert(chat, contact, chatDeleteMode: .messages, dismissToChatList, showAlert)
@@ -1324,7 +1323,6 @@ private func deleteContactWithoutConversation(
     showActionSheet(SomeActionSheet(
         actionSheet: ActionSheet(
             title: Text("Confirm contact deletion?"),
-            message: Text(contact.displayName),
             buttons: [
                 .destructive(Text("Delete and notify contact")) {
                     deleteContactMaybeErrorAlert(chat, contact, chatDeleteMode: .full(notify: true), dismissToChatList, showAlert)
@@ -1349,7 +1347,6 @@ private func deleteNotReadyContact(
     showActionSheet(SomeActionSheet(
         actionSheet: ActionSheet(
             title: Text("Confirm contact deletion?"),
-            message: Text(contact.displayName),
             buttons: [
                 .destructive(Text("Confirm")) {
                     deleteContactMaybeErrorAlert(chat, contact, chatDeleteMode: .full(notify: false), dismissToChatList, showAlert)

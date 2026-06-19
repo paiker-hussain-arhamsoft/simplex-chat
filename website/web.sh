@@ -55,10 +55,6 @@ for lang in "${langs[@]}"; do
   echo "done $lang copying"
 done
 
-for f in src/js/*.jsc; do
-  [ -f "$f" ] && cpp -P -traditional-cpp "$f" "${f%.jsc}.js"
-done
-
 npm run build
 
 for lang in "${langs[@]}"; do

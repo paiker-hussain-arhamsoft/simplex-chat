@@ -5,7 +5,6 @@ import SectionCustomFooter
 import SectionDividerSpaced
 import SectionItemView
 import SectionView
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.*
 import androidx.compose.runtime.*
@@ -132,8 +131,8 @@ private fun AddGroupRelayLayout(
           fontSize = 14.sp
         )
       }
-      SectionDividerSpaced()
-      SectionView(generalGetString(MR.strings.select_relays)) {
+      SectionDividerSpaced(maxTopPadding = true)
+      SectionView(generalGetString(MR.strings.select_relays).uppercase()) {
         availableRelays.forEach { item ->
           val selected = item.relayId in selectedRelayIds
           SectionItemView(
