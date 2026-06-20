@@ -288,20 +288,14 @@ expect fun AttachmentSelection(
 )
 
 fun MutableState<ComposeState>.onFilesAttached(uris: List<URI>) {
-  val groups = uris.groupBy { isImage(it) || isVideoUri(it) }
-  val media = groups[true] ?: emptyList()
+  val groups =  uris.groupBy { isImage(it) }
+  val images = groups[true] ?: emptyList()
   val files = groups[false] ?: emptyList()
-  if (media.isNotEmpty()) {
-    CoroutineScope(Dispatchers.IO).launch { processPickedMedia(media, null) }
+  if (images.isNotEmpty()) {
+    CoroutineScope(Dispatchers.IO).launch { processPickedMedia(images, null) }
   } else if (files.isNotEmpty()) {
     processPickedFile(uris.first(), null)
   }
-}
-
-private fun isVideoUri(uri: URI): Boolean {
-  val name = getFileName(uri)?.lowercase() ?: return false
-  return name.endsWith(".mov") || name.endsWith(".avi") || name.endsWith(".mp4") ||
-      name.endsWith(".mpg") || name.endsWith(".mpeg") || name.endsWith(".mkv")
 }
 
 fun MutableState<ComposeState>.processPickedFile(uri: URI?, text: String?) {
@@ -330,7 +324,7 @@ suspend fun MutableState<ComposeState>.processPickedMedia(uris: List<URI>, text:
   val imagesPreview = ArrayList<String>()
   uris.forEach { uri ->
     var bitmap: ImageBitmap?
-    val uploadContent: UploadContent? = when {
+    when {
       isImage(uri) -> {
         // Image
         val drawable = getDrawableFromUri(uri)
@@ -340,19 +334,16 @@ suspend fun MutableState<ComposeState>.processPickedMedia(uris: List<URI>, text:
           // It's a gif or webp
           val fileSize = getFileSize(uri)
           if (fileSize != null && fileSize <= maxFileSize) {
-            UploadContent.AnimatedImage(uri)
+            content.add(UploadContent.AnimatedImage(uri))
           } else {
             bitmap = null
             AlertManager.shared.showAlertMsg(
               generalGetString(MR.strings.large_file),
               String.format(generalGetString(MR.strings.maximum_supported_file_size), formatBytes(maxFileSize))
             )
-            null
           }
         } else if (bitmap != null) {
-          UploadContent.SimpleImage(uri)
-        } else {
-          null
+          content.add(UploadContent.SimpleImage(uri))
         }
       }
       else -> {
@@ -360,22 +351,11 @@ suspend fun MutableState<ComposeState>.processPickedMedia(uris: List<URI>, text:
         val res = getBitmapFromVideo(uri, withAlertOnException = true)
         bitmap = res.preview
         val durationMs = res.duration
-        UploadContent.Video(uri, durationMs?.div(1000)?.toInt() ?: 0)
+        content.add(UploadContent.Video(uri, durationMs?.div(1000)?.toInt() ?: 0))
       }
     }
-    // content and imagesPreview must stay index-aligned and equal-length: both consumers
-    // (ComposeImageView and sendMessageAsync) cross-index one list by the other's index.
-    // Only pair them when a preview bitmap exists; otherwise skip the media entirely.
-    if (bitmap != null && uploadContent != null) {
-      content.add(uploadContent)
+    if (bitmap != null) {
       imagesPreview.add(resizeImageToStrSize(bitmap, maxDataSize = 14000))
-    } else if (uploadContent is UploadContent.Video && !AlertManager.shared.hasAlertsShown()) {
-      // A corrupted/undecodable video can yield a null preview frame without throwing, so
-      // getBitmapFromVideo shows no alert. Skip it (other picked media still send) and tell
-      // the user instead of dropping it silently. hasAlertsShown guards against stacking the
-      // alert across multiple bad items and against duplicating the one already shown on the
-      // exception path. Image decode failures are already surfaced by getBitmapFromUri above.
-      showVideoDecodingException()
     }
   }
   if (imagesPreview.isNotEmpty()) {

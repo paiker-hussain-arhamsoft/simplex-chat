@@ -1,7 +1,7 @@
 ---
 title: Security Policy
 permalink: /security/index.html
-revision: 25.05.2026
+revision: 23.04.2024
 ---
 
 # Security Policy
@@ -12,7 +12,7 @@ The implementation security assessment of SimpleX cryptography and networking wa
 
 The cryptographic review of SimpleX protocols design was done by Trail of Bits in [July 2024](../blog/20241014-simplex-network-v6-1-security-review-better-calls-user-experience.md).
 
-We have scheduled implementation security assessment for June 2026.
+We are planning implementation security assessment in early 2025.
 
 ## Reporting security issues
 
