@@ -1427,7 +1427,6 @@ public func toGroupPreferences(_ fullPreferences: FullGroupPreferences) -> Group
 
 public struct GroupPreference: Codable, Equatable, Hashable {
     public var enable: GroupFeatureEnabled
-    public var role: GroupMemberRole?
 
     public var on: Bool {
         enable == .on
@@ -1445,9 +1444,8 @@ public struct GroupPreference: Codable, Equatable, Hashable {
         }
     }
 
-    public init(enable: GroupFeatureEnabled, role: GroupMemberRole? = nil) {
+    public init(enable: GroupFeatureEnabled) {
         self.enable = enable
-        self.role = role
     }
 }
 
@@ -2614,13 +2612,6 @@ public enum GroupType: Codable, Hashable {
 }
 
 public struct PublicGroupAccess: Codable, Hashable {
-    public init(groupWebPage: String? = nil, groupDomain: String? = nil, domainWebPage: Bool = false, allowEmbedding: Bool = false) {
-        self.groupWebPage = groupWebPage
-        self.groupDomain = groupDomain
-        self.domainWebPage = domainWebPage
-        self.allowEmbedding = allowEmbedding
-    }
-
     public var groupWebPage: String?
     public var groupDomain: String?
     public var domainWebPage: Bool = false

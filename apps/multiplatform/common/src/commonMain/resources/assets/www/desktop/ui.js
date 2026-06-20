@@ -3,7 +3,7 @@
 useWorker = typeof window.Worker !== "undefined";
 isDesktop = true;
 // Create WebSocket connection.
-const socket = new WebSocket(`ws://${location.host}${location.search}`);
+const socket = new WebSocket(`ws://${location.host}`);
 socket.addEventListener("open", (_event) => {
     console.log("Opened socket");
     sendMessageToNative = (msg) => {

@@ -110,88 +110,33 @@ struct DatabaseView: View {
             }
 
             Section {
-                NavigationLink("Database passphrase & export", destination: databaseManagementView)
-            }
-
-            Section {
-                Button(m.users.count > 1 ? "Delete files for all chat profiles" : "Delete all files", role: .destructive) {
-                    alert = .deleteFilesAndMedia
+                settingsRow(
+                    stopped ? "exclamationmark.octagon.fill" : "play.fill",
+                    color: stopped ? .red : .green
+                ) {
+                    Toggle(
+                        stopped ? "Chat is stopped" : "Chat is running",
+                        isOn: $runChat
+                    )
+                    .onChange(of: runChat) { _ in
+                        if runChat {
+                            DatabaseView.startChat($runChat, $progressIndicator)
+                        } else if !stoppingChat {
+                            stoppingChat = false
+                            alert = .stopChat
+                        }
+                    }
                 }
-                .disabled(progressIndicator || appFilesCountAndSize?.0 == 0)
             } header: {
-                Text("Files & media")
+                Text("Run chat")
                     .foregroundColor(theme.colors.secondary)
             } footer: {
-                if let (fileCount, size) = appFilesCountAndSize {
-                    if fileCount == 0 {
-                        Text("No received or sent files")
-                            .foregroundColor(theme.colors.secondary)
-                    } else {
-                        Text("\(fileCount) file(s) with total size of \(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .binary))")
-                            .foregroundColor(theme.colors.secondary)
-                    }
+                if case .documents = dbContainer {
+                    Text("Database will be migrated when the app restarts")
+                        .foregroundColor(theme.colors.secondary)
                 }
             }
-        }
-        .onAppear {
-            runChat = m.chatRunning ?? true
-            appFilesCountAndSize = directoryFileCountAndSize(getAppFilesDirectory())
-            currentChatItemTTL = chatItemTTL
-        }
-        .onChange(of: chatItemTTL) { ttl in
-            if ttl < currentChatItemTTL {
-                alert = .setChatItemTTL(ttl: ttl)
-            } else if ttl != currentChatItemTTL {
-                setCiTTL(ttl)
-            }
-        }
-        .alert(item: $alert) { item in databaseAlert(item) }
-        .fileImporter(
-            isPresented: $showFileImporter,
-            allowedContentTypes: [.zip],
-            allowsMultipleSelection: false
-        ) { result in
-            if case let .success(files) = result, let fileURL = files.first {
-                importedArchivePath = fileURL
-                alert = .importArchive
-            }
-        }
-    }
 
-    private func runChatToggleView() -> some View {
-        Section {
-            let stopped = m.chatRunning == false
-            settingsRow(
-                stopped ? "exclamationmark.octagon.fill" : "play.fill",
-                color: stopped ? .red : .green
-            ) {
-                Toggle(
-                    stopped ? "Chat is stopped" : "Chat is running",
-                    isOn: $runChat
-                )
-                .onChange(of: runChat) { _ in
-                    if runChat {
-                        DatabaseView.startChat($runChat, $progressIndicator)
-                    } else if !stoppingChat {
-                        stoppingChat = false
-                        alert = .stopChat
-                    }
-                }
-            }
-        } header: {
-            Text("Run chat")
-                .foregroundColor(theme.colors.secondary)
-        } footer: {
-            if case .documents = dbContainer {
-                Text("Database will be migrated when the app restarts")
-                    .foregroundColor(theme.colors.secondary)
-            }
-        }
-    }
-
-    private func databaseManagementView() -> some View {
-        List {
-            let stopped = m.chatRunning == false
             Section {
                 let unencrypted = m.chatDbEncrypted == false
                 let color: Color = unencrypted ? .orange : theme.colors.secondary
@@ -249,9 +194,49 @@ struct DatabaseView: View {
                 }
             }
 
-            runChatToggleView()
+            Section {
+                Button(m.users.count > 1 ? "Delete files for all chat profiles" : "Delete all files", role: .destructive) {
+                    alert = .deleteFilesAndMedia
+                }
+                .disabled(progressIndicator || appFilesCountAndSize?.0 == 0)
+            } header: {
+                Text("Files & media")
+                    .foregroundColor(theme.colors.secondary)
+            } footer: {
+                if let (fileCount, size) = appFilesCountAndSize {
+                    if fileCount == 0 {
+                        Text("No received or sent files")
+                            .foregroundColor(theme.colors.secondary)
+                    } else {
+                        Text("\(fileCount) file(s) with total size of \(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .binary))")
+                            .foregroundColor(theme.colors.secondary)
+                    }
+                }
+            }
         }
-        .modifier(ThemedBackground(grouped: true))
+        .onAppear {
+            runChat = m.chatRunning ?? true
+            appFilesCountAndSize = directoryFileCountAndSize(getAppFilesDirectory())
+            currentChatItemTTL = chatItemTTL
+        }
+        .onChange(of: chatItemTTL) { ttl in
+            if ttl < currentChatItemTTL {
+                alert = .setChatItemTTL(ttl: ttl)
+            } else if ttl != currentChatItemTTL {
+                setCiTTL(ttl)
+            }
+        }
+        .alert(item: $alert) { item in databaseAlert(item) }
+        .fileImporter(
+            isPresented: $showFileImporter,
+            allowedContentTypes: [.zip],
+            allowsMultipleSelection: false
+        ) { result in
+            if case let .success(files) = result, let fileURL = files.first {
+                importedArchivePath = fileURL
+                alert = .importArchive
+            }
+        }
     }
 
     private func databaseAlert(_ alertItem: DatabaseAlert) -> Alert {
