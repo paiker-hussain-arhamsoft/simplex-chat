@@ -121,6 +121,16 @@ struct NetworkAndServers: View {
                     }
                 }
 
+                Section(header: Text("Calls").foregroundColor(theme.colors.secondary)) {
+                    NavigationLink {
+                        RTCServers()
+                            .navigationTitle("Your ICE servers")
+                            .modifier(ThemedBackground(grouped: true))
+                    } label: {
+                        Text("WebRTC ICE servers")
+                    }
+                }
+
                 Section(header: Text("Network connection").foregroundColor(theme.colors.secondary)) {
                     HStack {
                         Text(m.networkInfo.networkType.text)
