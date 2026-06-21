@@ -482,8 +482,7 @@ chatEventToView hu ChatConfig {logLevel, showReactions, showReceipts, testView} 
   CEvtSubscriptionEnd u acEntity ->
     let Connection {connId} = entityConnection acEntity
      in ttyUser u [sShow connId <> ": END"]
-  CEvtSubscriptionStatus srv status conns -> [plain $ subStatusStr status <> " " <> tshow (length conns) <> " connections on server " <> showSMPServer srv]
-  CEvtServiceSubStatus srv event -> [plain $ serviceSubEventStr srv event]
+  CEvtSubscriptionStatus srv status conns -> [plain $ subStatusStr status <> " " <> show (length conns) <> " connections on server " <> showSMPServer srv]
   CEvtReceivedGroupInvitation {user = u, groupInfo = g, contact = c, memberRole = r} -> ttyUser u $ viewReceivedGroupInvitation g c r
   CEvtUserJoinedGroup u g m -> ttyUser u $ viewUserJoinedGroup g m
   CEvtGroupLinkDataUpdated u g groupLink relays relaysChanged
@@ -620,14 +619,13 @@ viewUsersList us =
    in if null ss then ["no users"] else ss
   where
     ldn (UserInfo User {localDisplayName = n} _) = T.toLower n
-    userInfo (UserInfo User {localDisplayName = n, profile = LocalProfile {fullName, shortDescr, peerType, localBadge}, activeUser, showNtfs, viewPwdHash, clientService} count)
+    userInfo (UserInfo User {localDisplayName = n, profile = LocalProfile {fullName, shortDescr, peerType, localBadge}, activeUser, showNtfs, viewPwdHash} count)
       | activeUser || isNothing viewPwdHash = Just $ ttyFullNameBadge n fullName shortDescr localBadge <> infoStr <> bot
       | otherwise = Nothing
       where
         infoStr = if null info then "" else " (" <> mconcat (intersperse ", " info) <> ")"
         info =
           [highlight' "active" | activeUser]
-            <> [highlight' "service" | isTrue clientService]
             <> [highlight' "hidden" | isJust viewPwdHash]
             <> ["muted" | not showNtfs]
             <> [plain ("unread: " <> show count) | count /= 0]
@@ -635,8 +633,8 @@ viewUsersList us =
           Just CPTBot -> " (bot)"
           _ -> ""
 
-showSMPServer :: SMPServer -> Text
-showSMPServer ProtocolServer {host} = safeDecodeUtf8 $ strEncode host
+showSMPServer :: SMPServer -> String
+showSMPServer ProtocolServer {host} = B.unpack $ strEncode host
 
 viewHostEvent :: AProtocolType -> TransportHost -> String
 viewHostEvent p h = map toUpper (B.unpack $ strEncode p) <> " host " <> B.unpack (strEncode h)
@@ -1207,8 +1205,8 @@ viewReceivedContactRequest c Profile {fullName, shortDescr} =
   ]
 
 showRelay :: GroupRelay -> StyledString
-showRelay GroupRelay {groupRelayId, relayStatus, relayCap = RelayCapabilities {webDomain}} =
-  "  - relay id " <> sShow groupRelayId <> ": " <> plain (relayStatusText relayStatus) <> maybe "" (\d -> ", web: " <> plain d) webDomain
+showRelay GroupRelay {groupRelayId, relayStatus} =
+  "  - relay id " <> sShow groupRelayId <> ": " <> plain (relayStatusText relayStatus)
 
 viewGroupRelays :: GroupInfo -> [GroupRelay] -> [StyledString]
 viewGroupRelays g relays =
@@ -1329,7 +1327,7 @@ viewJoinedGroupMemberConnecting g@GroupInfo {groupId} host m@GroupMember {groupM
     [ (ttyGroup' g <> ": " <> ttyMember host <> " added " <> ttyFullMember m <> " to the group (connecting and pending review...), ")
       <> ("use " <> highlight ("/_accept member #" <> show groupId <> " " <> show groupMemberId <> " <role>") <> " to accept member")
     ]
-  _ | useRelays' g -> [ttyGroup' g <> ": " <> ttyMember host <> " introduced " <> ttyFullMember m <> " in the channel"]
+  _ | useRelays' g -> [ttyGroup' g <> ": " <> ttyMember host <> " added " <> ttyFullMember m <> " to the group"]
     | otherwise -> [ttyGroup' g <> ": " <> ttyMember host <> " added " <> ttyFullMember m <> " to the group (connecting...)"]
 
 viewConnectedToGroupMember :: GroupInfo -> GroupMember -> [StyledString]
@@ -1496,7 +1494,7 @@ groupInvitation' g@GroupInfo {localDisplayName = ldn, groupProfile = GroupProfil
 
 viewNewMemberContactReceivedInv :: User -> Contact -> GroupInfo -> GroupMember -> [StyledString]
 viewNewMemberContactReceivedInv user ct@Contact {localDisplayName = c} g m
-  | autoAcceptMemberContacts user =
+  | isTrue (autoAcceptMemberContacts user) =
       [ttyGroup' g <> " " <> ttyMember m <> " is creating direct contact " <> ttyContact' ct <> " with you"]
   | otherwise =
       [ ttyGroup' g <> " " <> ttyMember m <> " requests to create direct contact with you",
@@ -1582,22 +1580,12 @@ viewConnDiffIds userDiff connDiff
       where
         showIds = plain . T.intercalate ", " . map (tshow . unwrapId)
 
-subStatusStr :: SubscriptionStatus -> Text
+subStatusStr :: SubscriptionStatus -> String
 subStatusStr = \case
   SSActive -> "subscribed"
   SSPending -> "disconnected"
-  SSRemoved e -> "removed: " <> T.pack e
+  SSRemoved e -> "removed: " <> e
   SSNoSub -> "no subscription"
-
-serviceSubEventStr :: SMPServer -> ServiceSubEvent -> Text
-serviceSubEventStr srv = \case
-  ServiceSubUp e_ n -> "subscribed service " <> conns n <> srvStr <> ": " <> fromMaybe "ok" e_
-  ServiceSubDown n -> "disconnected service " <> conns n <> srvStr
-  ServiceSubAll -> "received messages from service" <> srvStr -- "(" <> n <> "connections)"
-  ServiceSubEnd n -> "service subscription ended " <> conns n <> srvStr
-  where
-    conns n = "(" <> tshow n <> " connections)"
-    srvStr = " on server " <> showSMPServer srv
 
 viewUserServers :: UserOperatorServers -> [StyledString]
 viewUserServers (UserOperatorServers _ [] [] []) = []
@@ -1837,7 +1825,7 @@ viewConnectionStats ConnectionStats {rcvQueuesInfo, sndQueuesInfo} =
     <> ["sending messages via: " <> viewSndQueuesInfo sndQueuesInfo | not $ null sndQueuesInfo]
 
 viewRcvQueuesInfo :: [RcvQueueInfo] -> StyledString
-viewRcvQueuesInfo = plain . T.intercalate ", " . map showQueueInfo
+viewRcvQueuesInfo = plain . intercalate ", " . map showQueueInfo
   where
     showQueueInfo RcvQueueInfo {rcvServer, rcvSwitchStatus, canAbortSwitch} =
       let switchCanBeAborted = if canAbortSwitch then ", can be aborted" else ""
@@ -1850,7 +1838,7 @@ viewRcvQueuesInfo = plain . T.intercalate ", " . map showQueueInfo
       RSReceivedMessage -> "switch secured"
 
 viewSndQueuesInfo :: [SndQueueInfo] -> StyledString
-viewSndQueuesInfo = plain . T.intercalate ", " . map showQueueInfo
+viewSndQueuesInfo = plain . intercalate ", " . map showQueueInfo
   where
     showQueueInfo SndQueueInfo {sndServer, sndSwitchStatus} =
       showSMPServer sndServer
@@ -1982,10 +1970,10 @@ countactUserPrefText cup = case cup of
 
 viewGroupUpdated :: GroupInfo -> GroupInfo -> Maybe GroupMember -> Maybe MsgSigStatus -> [StyledString]
 viewGroupUpdated
-  GroupInfo {localDisplayName = n, groupProfile = GroupProfile {fullName, shortDescr, description, image, groupPreferences = gps, memberAdmission = ma, publicGroup = pg}}
-  g'@GroupInfo {localDisplayName = n', groupProfile = GroupProfile {fullName = fullName', shortDescr = shortDescr', description = description', image = image', groupPreferences = gps', memberAdmission = ma', publicGroup = pg'}}
+  GroupInfo {localDisplayName = n, groupProfile = GroupProfile {fullName, shortDescr, description, image, groupPreferences = gps, memberAdmission = ma}}
+  g'@GroupInfo {localDisplayName = n', groupProfile = GroupProfile {fullName = fullName', shortDescr = shortDescr', description = description', image = image', groupPreferences = gps', memberAdmission = ma'}}
   m signed = do
-    let update = groupProfileUpdated <> groupPrefsUpdated <> memberAdmissionUpdated <> publicGroupAccessUpdated
+    let update = groupProfileUpdated <> groupPrefsUpdated <> memberAdmissionUpdated
     if null update
       then []
       else memberUpdated <> update
@@ -2010,18 +1998,6 @@ viewGroupUpdated
       memberAdmissionUpdated
         | ma == ma' = []
         | otherwise = ["changed member admission rules"]
-      publicGroupAccessUpdated
-        | access == access' = []
-        | otherwise = ["updated public group access:" <> viewAccess access']
-        where
-          access = pg >>= publicGroupAccess
-          access' = pg' >>= publicGroupAccess
-          viewAccess Nothing = " removed"
-          viewAccess (Just PublicGroupAccess {groupWebPage, groupDomain, domainWebPage, allowEmbedding}) =
-            maybe "" (\u -> " web=" <> plain u) groupWebPage
-              <> maybe "" (\d -> " domain=" <> plain d) groupDomain
-              <> (if domainWebPage then " domain_page=on" else "")
-              <> (if allowEmbedding then " embed=on" else "")
 
 viewGroupProfile :: GroupInfo -> [StyledString]
 viewGroupProfile g@GroupInfo {groupProfile = GroupProfile {shortDescr, description, image, groupPreferences = gps}} =
@@ -2624,6 +2600,7 @@ viewChatError isCmd logLevel testView = \case
     CENoConnectionUser agentConnId -> ["error: message user not found, conn id: " <> sShow agentConnId | logLevel <= CLLError]
     CENoSndFileUser aFileId -> ["error: snd file user not found, file id: " <> sShow aFileId | logLevel <= CLLError]
     CENoRcvFileUser aFileId -> ["error: rcv file user not found, file id: " <> sShow aFileId | logLevel <= CLLError]
+    CEActiveUserExists -> ["error: active user already exists"]
     CEUserExists name -> ["user with the name " <> ttyContact name <> " already exists"]
     CEChatRelayExists -> ["chat realy user already exists"]
     CEUserUnknown -> ["user does not exist or incorrect password"]
