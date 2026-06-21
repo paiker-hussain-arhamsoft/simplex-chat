@@ -101,7 +101,7 @@ End-to-end encrypted audio and video communication.
 | Call history | Call events displayed as chat items | `Shared/Views/Chat/ChatItem/CICallItemView.swift` |
 | Incoming call view | Dedicated UI for incoming call notifications | `Shared/Views/Call/IncomingCallView.swift` |
 
-### 5. Your privacy
+### 5. Privacy & Security
 
 Encryption, authentication, and privacy controls.
 

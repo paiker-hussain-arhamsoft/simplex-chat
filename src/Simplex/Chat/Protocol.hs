@@ -83,13 +83,12 @@ import Simplex.Messaging.Version hiding (version)
 -- 15 - support specifying message scopes for group messages (2025-03-12)
 -- 16 - support short link data (2025-06-10)
 -- 17 - allow host voice messages during member approval regardless of group voice setting (2026-02-10)
--- 18 - relay web capabilities (2026-05-31)
 
 -- This should not be used directly in code, instead use `maxVersion chatVRange` from ChatConfig.
 -- This indirection is needed for backward/forward compatibility testing.
 -- Testing with real app versions is still needed, as tests use the current code with different version ranges, not the old code.
 currentChatVersion :: VersionChat
-currentChatVersion = VersionChat 18
+currentChatVersion = VersionChat 17
 
 -- This should not be used directly in code, instead use `chatVRange` from ChatConfig (see comment above)
 supportedChatVRange :: VersionRangeChat
@@ -155,10 +154,6 @@ shortLinkDataVersion = VersionChat 16
 -- support host voice messages during member approval regardless of group voice setting
 memberSupportVoiceVersion :: VersionChat
 memberSupportVoiceVersion = VersionChat 17
-
--- relay sends web preview capabilities to owner
-relayWebCapVersion :: VersionChat
-relayWebCapVersion = VersionChat 18
 
 agentToChatVersion :: VersionSMPA -> VersionChat
 agentToChatVersion v
@@ -937,7 +932,7 @@ parseChatMessages msg = case B.head msg of
       Right (compressed :: L.NonEmpty Compressed) -> case traverse decompressedSize compressed of
         Nothing -> [Left "compressed size not specified"]
         Just sizes
-          | sum sizes > maxDecompressedMsgLength -> [Left "decompressed size exceeds limit"]
+          | any (maxDecompressedMsgLength <) sizes || maxDecompressedMsgLength < sum sizes -> [Left "decompressed size exceeds limit"]
           | otherwise -> concatMap (either (\e -> [Left e]) parseUncompressed' . decompress1) compressed
     parseUncompressed' "" = [Left "empty string"]
     parseUncompressed' s = parseUncompressed (B.head s) s
@@ -1267,8 +1262,10 @@ requiresSignature = \case
   XInfo_ -> True
   _ -> False
 
--- TODO [relays] can be tightened — sender keys are now disseminated via
--- TODO   prepended XGrpMemNew before forwarded XInfo/XGrpLeave reach the recipient.
+-- TODO [relays] relay: vectors tracking which members received which other member profiles/keys.
+-- TODO   - don't forward XGrpLeave/XInfo to members who haven't seen sender's profile/key.
+-- TODO   - unverifiedAllowed is a temporary workaround postponing targeted event forwarding.
+
 -- Allow signed but unverified XGrpLeave/XInfo between subscribers when sender's key is unknown.
 -- Owner keys are always known, so subscribers are required to verify from owners.
 -- Likewise, subscriber keys are always known to owners, so owners are required to verify from subscribers.
