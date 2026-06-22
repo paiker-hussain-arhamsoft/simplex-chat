@@ -5,6 +5,7 @@ import SectionCustomFooter
 import SectionDividerSpaced
 import SectionItemView
 import SectionItemViewWithoutMinPadding
+import SectionSpacer
 import SectionView
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -160,7 +161,7 @@ fun AddGroupMembersLayout(
         iconColor = if (isInDarkTheme()) GroupDark else SettingsSecondaryLight
       )
     }
-    SectionDividerSpaced()
+    SectionSpacer()
 
     if (contactsToAdd.isEmpty() && searchText.value.text.isEmpty()) {
       Row(
@@ -194,8 +195,8 @@ fun AddGroupMembersLayout(
       SectionCustomFooter {
         InviteSectionFooter(selectedContactsCount = selectedContacts.size, allowModifyMembers, clearSelection)
       }
-      SectionDividerSpaced()
-      SectionView(stringResource(MR.strings.select_contacts)) {
+      SectionDividerSpaced(maxTopPadding = true)
+      SectionView(stringResource(MR.strings.select_contacts).uppercase()) {
         SectionItemView(padding = PaddingValues(start = DEFAULT_PADDING, end = DEFAULT_PADDING_HALF)) {
           SearchRowView(searchText)
         }
@@ -228,7 +229,7 @@ private fun RoleSelectionRow(groupInfo: GroupInfo, selectedRole: MutableState<Gr
   ) {
     val values = GroupMemberRole.selectableRoles
       .filter { it <= groupInfo.membership.memberRole }
-      .map { it to it.text(isChannel = groupInfo.isChannel) }
+      .map { it to it.text }
     ExposedDropDownSettingRow(
       generalGetString(MR.strings.new_member_role),
       values,

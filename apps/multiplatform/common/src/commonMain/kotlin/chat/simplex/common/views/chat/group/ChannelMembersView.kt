@@ -44,9 +44,9 @@ fun ChannelMembersView(
 
     if (groupInfo.isOwner) {
       val subscriberCount = groupInfo.groupSummary.publicMemberCount ?: (members.size + 1).toLong()
-      SectionView(title = subscriberCountStr(subscriberCount)) {
+      SectionView(title = subscriberCountStr(subscriberCount).uppercase()) {
         SectionItemView(minHeight = 54.dp, padding = PaddingValues(horizontal = DEFAULT_PADDING)) {
-          ChannelMemberRow(groupInfo.membership, user = true, showRole = true, isChannel = groupInfo.isChannel)
+          ChannelMemberRow(groupInfo.membership, user = true, showRole = true)
         }
         members.forEachIndexed { index, member ->
           Divider()
@@ -55,7 +55,7 @@ fun ChannelMembersView(
             minHeight = 54.dp,
             padding = PaddingValues(horizontal = DEFAULT_PADDING)
           ) {
-            ChannelMemberRow(member, user = false, showRole = member.memberRole >= GroupMemberRole.Owner, isChannel = groupInfo.isChannel)
+            ChannelMemberRow(member, user = false, showRole = member.memberRole >= GroupMemberRole.Owner)
           }
         }
       }
@@ -71,7 +71,7 @@ fun ChannelMembersView(
             minHeight = 54.dp,
             padding = PaddingValues(horizontal = DEFAULT_PADDING)
           ) {
-            ChannelMemberRow(member, user = false, showRole = false, isChannel = groupInfo.isChannel)
+            ChannelMemberRow(member, user = false, showRole = false)
           }
         }
       }
@@ -81,7 +81,7 @@ fun ChannelMembersView(
 }
 
 @Composable
-private fun ChannelMemberRow(member: GroupMember, user: Boolean, showRole: Boolean, isChannel: Boolean) {
+private fun ChannelMemberRow(member: GroupMember, user: Boolean, showRole: Boolean) {
   Row(
     Modifier.fillMaxWidth(),
     verticalAlignment = Alignment.CenterVertically,
@@ -112,7 +112,7 @@ private fun ChannelMemberRow(member: GroupMember, user: Boolean, showRole: Boole
     }
     if (showRole) {
       Text(
-        member.memberRole.text(isChannel = isChannel),
+        member.memberRole.text,
         color = MaterialTheme.colors.secondary
       )
     }

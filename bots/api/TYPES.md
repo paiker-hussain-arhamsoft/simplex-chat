@@ -87,7 +87,6 @@ This file is generated automatically.
 - [FileProtocol](#fileprotocol)
 - [FileStatus](#filestatus)
 - [FileTransferMeta](#filetransfermeta)
-- [FileType](#filetype)
 - [Format](#format)
 - [FormattedText](#formattedtext)
 - [FullGroupPreferences](#fullgrouppreferences)
@@ -1046,6 +1045,9 @@ NoRcvFileUser:
 
 UserUnknown:
 - type: "userUnknown"
+
+ActiveUserExists:
+- type: "activeUserExists"
 
 UserExists:
 - type: "userExists"
@@ -2103,15 +2105,6 @@ NO_FILE:
 
 ---
 
-## FileType
-
-**Enum type**:
-- "normal"
-- "roster"
-
-
----
-
 ## Format
 
 **Discriminated union type**:
@@ -2326,7 +2319,6 @@ MemberSupport:
 - uiThemes: [UIThemeEntityOverrides](#uithemeentityoverrides)?
 - customData: JSONObject?
 - groupSummary: [GroupSummary](#groupsummary)
-- rosterVersion: int64?
 - membersRequireAttention: int
 - viaGroupLinkUri: string?
 - groupKeys: [GroupKeys](#groupkeys)?
@@ -2964,7 +2956,6 @@ SubscribeError:
 - profile: [Profile](#profile)?
 - pastTimestamp: bool
 - userChatRelay: bool
-- clientService: bool
 
 
 ---
@@ -3328,7 +3319,6 @@ Cancelled:
 - xftpRcvFile: [XFTPRcvFile](#xftprcvfile)?
 - fileInvitation: [FileInvitation](#fileinvitation)
 - fileStatus: [RcvFileStatus](#rcvfilestatus)
-- fileType: [FileType](#filetype)
 - rcvFileInline: [InlineFileMode](#inlinefilemode)?
 - senderDisplayName: string
 - chunkSize: int64
@@ -3453,7 +3443,6 @@ ParseError:
 - "new"
 - "invited"
 - "accepted"
-- "acknowledgedRoster"
 - "active"
 - "inactive"
 - "rejected"
@@ -4230,9 +4219,8 @@ Handshake:
 - sendRcptsSmallGroups: bool
 - autoAcceptMemberContacts: bool
 - userMemberProfileUpdatedAt: UTCTime?
-- userChatRelay: bool
-- clientService: bool
 - uiThemes: [UIThemeEntityOverrides](#uithemeentityoverrides)?
+- userChatRelay: bool
 
 
 ---

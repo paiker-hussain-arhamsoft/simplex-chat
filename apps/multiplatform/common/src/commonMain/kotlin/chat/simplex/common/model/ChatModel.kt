@@ -697,15 +697,15 @@ object ChatModel {
     }
 
     suspend fun removeMemberItems(rhId: Long?, removedMember: GroupMember, byMember: GroupMember, groupInfo: GroupInfo) {
-      fun isRemovedMemberItem(item: ChatItem): Boolean = when {
-        item.chatDir is CIDirection.GroupSnd -> removedMember.groupMemberId == groupInfo.membership.groupMemberId
-        item.chatDir is CIDirection.GroupRcv -> item.chatDir.groupMember.groupMemberId == removedMember.groupMemberId
-        else -> false
-      }
-      fun markedUpdatedItem(item: ChatItem): ChatItem? {
-        if (!isRemovedMemberItem(item)) return null
+      fun removedUpdatedItem(item: ChatItem): ChatItem? {
+        val newContent = when {
+          item.chatDir is CIDirection.GroupSnd && removedMember.groupMemberId == groupInfo.membership.groupMemberId -> CIContent.SndModerated
+          item.chatDir is CIDirection.GroupRcv && item.chatDir.groupMember.groupMemberId == removedMember.groupMemberId -> CIContent.RcvModerated
+          else -> return null
+        }
         val updatedItem = item.copy(
-          meta = item.meta.copy(itemDeleted = CIDeleted.Moderated(Clock.System.now(), byGroupMember = byMember))
+          meta = item.meta.copy(itemDeleted = CIDeleted.Moderated(Clock.System.now(), byGroupMember = byMember)),
+          content = if (groupInfo.fullGroupPreferences.fullDelete.on) newContent else item.content
         )
         if (item.isActiveReport) {
           decreaseGroupReportsCounter(rhId, groupInfo.id)
@@ -713,52 +713,21 @@ object ChatModel {
         return updatedItem
       }
 
-      // Mirrors backend groupFeatureMemberAllowed: fullDelete may be role-gated in business groups.
-      val fullDeletePref = groupInfo.fullGroupPreferences.fullDelete
-      val fullDelete = fullDeletePref.on &&
-        byMember.memberRole >= (fullDeletePref.role ?: GroupMemberRole.Observer)
       val cInfo = ChatInfo.Group(groupInfo, groupChatScope = null) // TODO [knocking] review
       if (chatId.value == groupInfo.id) {
-        if (fullDelete) {
-          for (item in chatItems.value) {
-            if (isRemovedMemberItem(item)) {
-              if (item.isRcvNew) {
-                decreaseCounterInPrimaryContext(rhId, groupInfo.id)
-              }
-              if (item.isActiveReport) {
-                decreaseGroupReportsCounter(rhId, groupInfo.id)
-              }
-            }
-          }
-          chatItems.removeAllAndNotify { item ->
-            val remove = isRemovedMemberItem(item)
-            if (remove) AudioPlayer.stop(item)
-            remove
-          }
-        } else {
-          for (i in 0 until chatItems.value.size) {
-            val updatedItem = markedUpdatedItem(chatItems.value[i])
-            if (updatedItem != null) {
-              updateChatItem(cInfo, updatedItem, atIndex = i)
-            }
+        for (i in 0 until chatItems.value.size) {
+          val updatedItem = removedUpdatedItem(chatItems.value[i])
+          if (updatedItem != null) {
+            updateChatItem(cInfo, updatedItem, atIndex = i)
           }
         }
       } else {
         val i = getChatIndex(rhId, groupInfo.id)
-        if (i >= 0) {
-          val chat = chats[i]
-          if (chat.chatItems.isNotEmpty()) {
-            val preview = chat.chatItems[0]
-            if (isRemovedMemberItem(preview)) {
-              if (fullDelete) {
-                chats.value[i] = chat.copy(chatItems = listOf(ChatItem.deletedItemDummy))
-              } else {
-                val updatedItem = markedUpdatedItem(preview)
-                if (updatedItem != null) {
-                  chats.value[i] = chat.copy(chatItems = listOf(updatedItem))
-                }
-              }
-            }
+        val chat = chats[i]
+        if (chat.chatItems.isNotEmpty()) {
+          val updatedItem = removedUpdatedItem(chat.chatItems[0])
+          if (updatedItem != null) {
+            chats.value[i] = chat.copy(chatItems = listOf(updatedItem))
           }
         }
       }
@@ -2415,7 +2384,6 @@ enum class RelayStatus {
   @SerialName("new") New,
   @SerialName("invited") Invited,
   @SerialName("accepted") Accepted,
-  @SerialName("acknowledgedRoster") AcknowledgedRoster,
   @SerialName("active") Active,
   @SerialName("inactive") Inactive,
   @SerialName("rejected") Rejected;
@@ -2424,7 +2392,6 @@ enum class RelayStatus {
     New -> generalGetString(MR.strings.relay_status_new)
     Invited -> generalGetString(MR.strings.relay_status_invited)
     Accepted -> generalGetString(MR.strings.relay_status_accepted)
-    AcknowledgedRoster -> generalGetString(MR.strings.relay_status_acknowledged_roster)
     Active -> generalGetString(MR.strings.relay_status_active)
     Inactive -> generalGetString(MR.strings.relay_status_inactive)
     Rejected -> generalGetString(MR.strings.relay_status_rejected)
@@ -2617,15 +2584,8 @@ data class GroupMember (
 
   fun canChangeRoleTo(groupInfo: GroupInfo): List<GroupMemberRole>? =
     if (memberRole == GroupMemberRole.Relay || !canBeRemoved(groupInfo) || memberStatus == GroupMemberStatus.MemRemoved || memberStatus == GroupMemberStatus.MemLeft || memberPending) null
-    else if (groupInfo.useRelays && !groupInfo.isOwner) null
     else groupInfo.membership.memberRole.let { userRole ->
-      if (groupInfo.useRelays)
-        // TODO [relays]: for now owners can only set observer/member in channels.
-        //   Restore the full Owner-excluded picker when moderator/admin promotion is supported:
-        // GroupMemberRole.selectableRoles.filter { it <= userRole && it != GroupMemberRole.Owner }
-        listOf(GroupMemberRole.Observer, GroupMemberRole.Member)
-      else
-        GroupMemberRole.selectableRoles.filter { it <= userRole }
+      GroupMemberRole.selectableRoles.filter { it <= userRole }
     }
 
   fun canBlockForAll(groupInfo: GroupInfo): Boolean {
@@ -2703,11 +2663,11 @@ enum class GroupMemberRole(val memberRole: String) {
     val selectableRoles: List<GroupMemberRole> = listOf(Observer, Member, Moderator, Admin, Owner)
   }
 
-  fun text(isChannel: Boolean): String = when (this) {
+  val text: String get() = when (this) {
     Relay -> generalGetString(MR.strings.group_member_role_relay)
-    Observer -> generalGetString(if (isChannel) MR.strings.group_member_role_observer_channel else MR.strings.group_member_role_observer)
+    Observer -> generalGetString(MR.strings.group_member_role_observer)
     Author -> generalGetString(MR.strings.group_member_role_author)
-    Member -> generalGetString(if (isChannel) MR.strings.group_member_role_member_channel else MR.strings.group_member_role_member)
+    Member -> generalGetString(MR.strings.group_member_role_member)
     Moderator -> generalGetString(MR.strings.group_member_role_moderator)
     Admin -> generalGetString(MR.strings.group_member_role_admin)
     Owner -> generalGetString(MR.strings.group_member_role_owner)
@@ -5101,13 +5061,13 @@ sealed class RcvGroupEvent() {
     is MemberAccepted -> String.format(generalGetString(MR.strings.rcv_group_event_member_accepted), profile.profileViewName)
     is UserAccepted -> generalGetString(MR.strings.rcv_group_event_user_accepted)
     is MemberLeft -> generalGetString(MR.strings.rcv_group_event_member_left)
-    is MemberRole -> String.format(generalGetString(MR.strings.rcv_group_event_changed_member_role), profile.profileViewName, role.text(isChannel = isChannel))
+    is MemberRole -> String.format(generalGetString(MR.strings.rcv_group_event_changed_member_role), profile.profileViewName, role.text)
     is MemberBlocked -> if (blocked) {
       String.format(generalGetString(MR.strings.rcv_group_event_member_blocked), profile.profileViewName)
     } else {
       String.format(generalGetString(MR.strings.rcv_group_event_member_unblocked), profile.profileViewName)
     }
-    is UserRole -> String.format(generalGetString(MR.strings.rcv_group_event_changed_your_role), role.text(isChannel = isChannel))
+    is UserRole -> String.format(generalGetString(MR.strings.rcv_group_event_changed_your_role), role.text)
     is MemberDeleted -> String.format(generalGetString(MR.strings.rcv_group_event_member_deleted), profile.profileViewName)
     is UserDeleted -> generalGetString(MR.strings.rcv_group_event_user_deleted)
     is GroupDeleted -> generalGetString(if (isChannel) MR.strings.rcv_channel_event_channel_deleted else MR.strings.rcv_group_event_group_deleted)
@@ -5146,8 +5106,8 @@ sealed class SndGroupEvent() {
   val text: String get() = text(isChannel = false)
 
   fun text(isChannel: Boolean): String = when (this) {
-    is MemberRole -> String.format(generalGetString(MR.strings.snd_group_event_changed_member_role), profile.profileViewName, role.text(isChannel = isChannel))
-    is UserRole -> String.format(generalGetString(MR.strings.snd_group_event_changed_role_for_yourself), role.text(isChannel = isChannel))
+    is MemberRole -> String.format(generalGetString(MR.strings.snd_group_event_changed_member_role), profile.profileViewName, role.text)
+    is UserRole -> String.format(generalGetString(MR.strings.snd_group_event_changed_role_for_yourself), role.text)
     is MemberBlocked -> if (blocked) {
       String.format(generalGetString(MR.strings.snd_group_event_member_blocked), profile.profileViewName)
     } else {

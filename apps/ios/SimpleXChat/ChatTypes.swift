@@ -1427,7 +1427,6 @@ public func toGroupPreferences(_ fullPreferences: FullGroupPreferences) -> Group
 
 public struct GroupPreference: Codable, Equatable, Hashable {
     public var enable: GroupFeatureEnabled
-    public var role: GroupMemberRole?
 
     public var on: Bool {
         enable == .on
@@ -1445,9 +1444,8 @@ public struct GroupPreference: Codable, Equatable, Hashable {
         }
     }
 
-    public init(enable: GroupFeatureEnabled, role: GroupMemberRole? = nil) {
+    public init(enable: GroupFeatureEnabled) {
         self.enable = enable
-        self.role = role
     }
 }
 
@@ -2614,13 +2612,6 @@ public enum GroupType: Codable, Hashable {
 }
 
 public struct PublicGroupAccess: Codable, Hashable {
-    public init(groupWebPage: String? = nil, groupDomain: String? = nil, domainWebPage: Bool = false, allowEmbedding: Bool = false) {
-        self.groupWebPage = groupWebPage
-        self.groupDomain = groupDomain
-        self.domainWebPage = domainWebPage
-        self.allowEmbedding = allowEmbedding
-    }
-
     public var groupWebPage: String?
     public var groupDomain: String?
     public var domainWebPage: Bool = false
@@ -2741,7 +2732,6 @@ public enum RelayStatus: String, Decodable, Equatable, Hashable {
     case new
     case invited
     case accepted
-    case acknowledgedRoster
     case active
     case inactive
     case rejected
@@ -2817,7 +2807,6 @@ extension RelayStatus {
         case .new: "new"
         case .invited: "invited"
         case .accepted: "accepted"
-        case .acknowledgedRoster: "acknowledged roster"
         case .active: "active"
         case .inactive: "inactive"
         case .rejected: "rejected"
@@ -2981,16 +2970,8 @@ public struct GroupMember: Identifiable, Decodable, Hashable {
 
     public func canChangeRoleTo(groupInfo: GroupInfo) -> [GroupMemberRole]? {
         if memberRole == .relay || !canBeRemoved(groupInfo: groupInfo) || memberStatus == .memRemoved || memberStatus == .memLeft || memberPending { return nil }
-        if groupInfo.useRelays && !groupInfo.isOwner { return nil }
         let userRole = groupInfo.membership.memberRole
-        if groupInfo.useRelays {
-            // TODO [relays]: for now owners can only set observer/member in channels.
-            //   Restore the full Owner-excluded picker when moderator/admin promotion is supported:
-            // return GroupMemberRole.supportedRoles.filter { $0 <= userRole && $0 != .owner }
-            return [.observer, .member]
-        } else {
-            return GroupMemberRole.supportedRoles.filter { $0 <= userRole }
-        }
+        return GroupMemberRole.supportedRoles.filter { $0 <= userRole }
     }
 
     public func canBlockForAll(groupInfo: GroupInfo) -> Bool {
@@ -3078,16 +3059,12 @@ public enum GroupMemberRole: String, Identifiable, CaseIterable, Comparable, Cod
 
     public static var supportedRoles: [GroupMemberRole] = [.observer, .member, .moderator, .admin, .owner]
 
-    public func text(isChannel: Bool) -> String {
+    public var text: String {
         switch self {
         case .relay: return NSLocalizedString("relay", comment: "member role")
-        case .observer: return isChannel
-            ? NSLocalizedString("subscriber", comment: "member role")
-            : NSLocalizedString("observer", comment: "member role")
+        case .observer: return NSLocalizedString("observer", comment: "member role")
         case .author: return NSLocalizedString("author", comment: "member role")
-        case .member: return isChannel
-            ? NSLocalizedString("contributor", comment: "member role")
-            : NSLocalizedString("member", comment: "member role")
+        case .member: return NSLocalizedString("member", comment: "member role")
         case .moderator: return NSLocalizedString("moderator", comment: "member role")
         case .admin: return NSLocalizedString("admin", comment: "member role")
         case .owner: return NSLocalizedString("owner", comment: "member role")
@@ -5608,7 +5585,7 @@ public enum RcvGroupEvent: Decodable, Hashable {
         case .userAccepted: return NSLocalizedString("accepted you", comment: "rcv group event chat item")
         case .memberLeft: return NSLocalizedString("left", comment: "rcv group event chat item")
         case let .memberRole(_, profile, role):
-            return  String.localizedStringWithFormat(NSLocalizedString("changed role of %@ to %@", comment: "rcv group event chat item"), profile.profileViewName, role.text(isChannel: isChannel))
+            return  String.localizedStringWithFormat(NSLocalizedString("changed role of %@ to %@", comment: "rcv group event chat item"), profile.profileViewName, role.text)
         case let .memberBlocked(_, profile, blocked):
             if blocked {
                 return String.localizedStringWithFormat(NSLocalizedString("blocked %@", comment: "rcv group event chat item"), profile.profileViewName)
@@ -5616,7 +5593,7 @@ public enum RcvGroupEvent: Decodable, Hashable {
                 return String.localizedStringWithFormat(NSLocalizedString("unblocked %@", comment: "rcv group event chat item"), profile.profileViewName)
             }
         case let .userRole(role):
-            return String.localizedStringWithFormat(NSLocalizedString("changed your role to %@", comment: "rcv group event chat item"), role.text(isChannel: isChannel))
+            return String.localizedStringWithFormat(NSLocalizedString("changed your role to %@", comment: "rcv group event chat item"), role.text)
         case let .memberDeleted(_, profile):
             return String.localizedStringWithFormat(NSLocalizedString("removed %@", comment: "rcv group event chat item"), profile.profileViewName)
         case .userDeleted: return NSLocalizedString("removed you", comment: "rcv group event chat item")
@@ -5662,9 +5639,9 @@ public enum SndGroupEvent: Decodable, Hashable {
     func text(isChannel: Bool) -> String {
         switch self {
         case let .memberRole(_, profile, role):
-            return  String.localizedStringWithFormat(NSLocalizedString("you changed role of %@ to %@", comment: "snd group event chat item"), profile.profileViewName, role.text(isChannel: isChannel))
+            return  String.localizedStringWithFormat(NSLocalizedString("you changed role of %@ to %@", comment: "snd group event chat item"), profile.profileViewName, role.text)
         case let .userRole(role):
-            return String.localizedStringWithFormat(NSLocalizedString("you changed role for yourself to %@", comment: "snd group event chat item"), role.text(isChannel: isChannel))
+            return String.localizedStringWithFormat(NSLocalizedString("you changed role for yourself to %@", comment: "snd group event chat item"), role.text)
         case let .memberBlocked(_, profile, blocked):
             if blocked {
                 return String.localizedStringWithFormat(NSLocalizedString("you blocked %@", comment: "snd group event chat item"), profile.profileViewName)

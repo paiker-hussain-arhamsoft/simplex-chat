@@ -1,13 +1,11 @@
 package chat.simplex.common.views.usersettings
 
-import CARD_PADDING
-import LocalCardScreen
 import SectionBottomSpacer
 import SectionDividerSpaced
 import SectionItemView
-import itemHPadding
 import SectionItemViewSpaceBetween
 import SectionItemViewWithoutMinPadding
+import SectionSpacer
 import SectionView
 import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -60,9 +58,9 @@ expect fun AppearanceView(m: ChatModel)
 object AppearanceScope {
   @Composable
   fun ProfileImageSection() {
-    SectionView(stringResource(MR.strings.settings_section_title_profile_images), contentPadding = PaddingValues(horizontal = CARD_PADDING)) {
+    SectionView(stringResource(MR.strings.settings_section_title_profile_images).uppercase(), contentPadding = PaddingValues(horizontal = DEFAULT_PADDING)) {
       val image = remember { chatModel.currentUser }.value?.image
-      Row(Modifier.padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+      Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
         val size = 60
         Box(Modifier.offset(x = -(size / 12).dp)) {
           if (!image.isNullOrEmpty()) {
@@ -93,10 +91,9 @@ object AppearanceScope {
   @Composable
   fun AppToolbarsSection() {
     BoxWithConstraints {
-      SectionView(stringResource(MR.strings.appearance_app_toolbars)) {
+      SectionView(stringResource(MR.strings.appearance_app_toolbars).uppercase()) {
         SectionItemViewWithoutMinPadding {
           Box(Modifier.weight(1f)) {
-            var fontScale by remember { mutableStateOf(1f) }
             Text(
               stringResource(MR.strings.appearance_in_app_bars_alpha),
               Modifier.clickable(
@@ -105,9 +102,7 @@ object AppearanceScope {
               ) {
                 appPrefs.inAppBarsAlpha.set(appPrefs.inAppBarsDefaultAlpha)
               },
-              maxLines = 1,
-              fontSize = MaterialTheme.typography.body1.fontSize * fontScale,
-              onTextLayout = { if (it.hasVisualOverflow && fontScale > 0.5f) fontScale -= 0.05f }
+              maxLines = 1
             )
           }
           Spacer(Modifier.padding(end = 10.dp))
@@ -180,7 +175,7 @@ object AppearanceScope {
   @Composable
   fun MessageShapeSection() {
     BoxWithConstraints {
-      SectionView(stringResource(MR.strings.settings_section_title_message_shape)) {
+      SectionView(stringResource(MR.strings.settings_section_title_message_shape).uppercase()) {
         SectionItemViewWithoutMinPadding {
           Text(stringResource(MR.strings.settings_message_shape_corner), Modifier.weight(1f))
           Spacer(Modifier.width(10.dp))
@@ -210,8 +205,8 @@ object AppearanceScope {
   @Composable
   fun FontScaleSection() {
     val localFontScale = remember { mutableStateOf(appPrefs.fontScale.get()) }
-    SectionView(stringResource(MR.strings.appearance_font_size), contentPadding = PaddingValues(horizontal = CARD_PADDING)) {
-      Row(Modifier.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+    SectionView(stringResource(MR.strings.appearance_font_size).uppercase(), contentPadding = PaddingValues(horizontal = DEFAULT_PADDING)) {
+      Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(50.dp)
           .background(MaterialTheme.colors.surface, RoundedCornerShape(percent = 22))
           .clip(RoundedCornerShape(percent = 22))
@@ -414,29 +409,26 @@ object AppearanceScope {
     }
 
     if (appPlatform.isDesktop) {
-      val gridPadding = 12.dp
-      val cardPadding = if (LocalCardScreen.current) CARD_PADDING * 2 else 0.dp
-      val itemSize = (DEFAULT_START_MODAL_WIDTH * fontSizeSqrtMultiplier - cardPadding - gridPadding * 5) / 4
+      val itemWidth = (DEFAULT_START_MODAL_WIDTH * fontSizeSqrtMultiplier - DEFAULT_PADDING * 2 - DEFAULT_PADDING_HALF * 3) / 4
+      val itemHeight = (DEFAULT_START_MODAL_WIDTH * fontSizeSqrtMultiplier - DEFAULT_PADDING * 2) / 4
       val rows = ceil((PresetWallpaper.entries.size + 2) / 4f).roundToInt()
       LazyVerticalGrid(
         columns = GridCells.Fixed(4),
-        Modifier.height(itemSize * rows + gridPadding * (rows + 1)),
-        contentPadding = PaddingValues(gridPadding),
-        verticalArrangement = Arrangement.spacedBy(gridPadding),
-        horizontalArrangement = Arrangement.spacedBy(gridPadding),
+        Modifier.height(itemHeight * rows + DEFAULT_PADDING_HALF * (rows - 1) + DEFAULT_PADDING * 2),
+        contentPadding = PaddingValues(DEFAULT_PADDING),
+        verticalArrangement = Arrangement.spacedBy(DEFAULT_PADDING_HALF),
+        horizontalArrangement = Arrangement.spacedBy(DEFAULT_PADDING_HALF),
       ) {
-        gridContent(itemSize, itemSize)
+        gridContent(itemWidth, itemHeight)
       }
     } else {
-      val gridPadding = 14.dp
-      val itemSize = 81.dp
-        LazyHorizontalGrid(
+      LazyHorizontalGrid(
         rows = GridCells.Fixed(1),
-        Modifier.height(itemSize + gridPadding * 2),
-        contentPadding = PaddingValues(gridPadding),
-        horizontalArrangement = Arrangement.spacedBy(gridPadding),
+        Modifier.height(80.dp + DEFAULT_PADDING * 2),
+        contentPadding = PaddingValues(DEFAULT_PADDING),
+        horizontalArrangement = Arrangement.spacedBy(DEFAULT_PADDING_HALF),
       ) {
-        gridContent(itemSize, itemSize)
+        gridContent(80.dp, 80.dp)
       }
     }
   }
@@ -529,7 +521,9 @@ object AppearanceScope {
     }
 
     SectionView(stringResource(MR.strings.settings_section_title_themes)) {
+      Spacer(Modifier.height(DEFAULT_PADDING_HALF))
       ThemeDestinationPicker(themeUserDestination)
+      Spacer(Modifier.height(DEFAULT_PADDING_HALF))
 
       val importWallpaperLauncher = rememberFileChooserLauncher(true) { to: URI? ->
         if (to != null) onImport(to)
@@ -561,7 +555,7 @@ object AppearanceScope {
             color = if (chatModel.remoteHostId != null && themeUserDestination.value != null) MaterialTheme.colors.secondary else MaterialTheme.colors.primary
           )
         }
-        SectionDividerSpaced()
+        SectionSpacer()
       }
 
       val state: State<DefaultThemeMode?> = remember(appPrefs.currentTheme.get()) {
@@ -590,23 +584,23 @@ object AppearanceScope {
         }
         saveThemeToDatabase(null)
       }
-      SectionItemView(click = {
-        val user = themeUserDestination.value
-        if (user == null) {
-          ModalManager.start.showModal(cardScreen = true) {
-            val importWallpaperLauncher = rememberFileChooserLauncher(true) { to: URI? ->
-              if (to != null) onImport(to)
-            }
-            CustomizeThemeView { onChooseType(it, importWallpaperLauncher) }
+    }
+    SectionItemView(click = {
+      val user = themeUserDestination.value
+      if (user == null) {
+        ModalManager.start.showModal {
+          val importWallpaperLauncher = rememberFileChooserLauncher(true) { to: URI? ->
+            if (to != null) onImport(to)
           }
-        } else {
-          ModalManager.start.showModalCloseable(cardScreen = true) { close ->
-            UserWallpaperEditorModal(chatModel.remoteHostId(), user.first, close)
-          }
+          CustomizeThemeView { onChooseType(it, importWallpaperLauncher) }
         }
-      }) {
-        Text(stringResource(MR.strings.customize_theme_title))
+      } else {
+        ModalManager.start.showModalCloseable { close ->
+          UserWallpaperEditorModal(chatModel.remoteHostId(), user.first, close)
+        }
       }
+    }) {
+      Text(stringResource(MR.strings.customize_theme_title))
     }
   }
 
@@ -632,70 +626,68 @@ object AppearanceScope {
         )
       }
 
-      SectionView {
-        WallpaperPresetSelector(
-          selectedWallpaper = wallpaperType,
-          baseTheme = currentTheme.base,
-          currentColors = { type ->
-            ThemeManager.currentColors(type, null, null, appPrefs.themeOverrides.get())
-          },
-          onChooseType = onChooseType
-        )
-        val type = MaterialTheme.wallpaper.type
-        if (type is WallpaperType.Image) {
-          SectionItemView(disabled = chatModel.remoteHostId != null, click = {
-            val defaultActiveTheme = ThemeManager.defaultActiveTheme(appPrefs.themeOverrides.get())
-            ThemeManager.saveAndApplyWallpaper(baseTheme, null)
-            ThemeManager.removeTheme(defaultActiveTheme?.themeId)
-            removeWallpaperFile(type.filename)
-            saveThemeToDatabase(null)
-          }) {
-            Text(
-              stringResource(MR.strings.theme_remove_image),
-              color = if (chatModel.remoteHostId == null) MaterialTheme.colors.primary else MaterialTheme.colors.secondary
-            )
-          }
-        }
-      }
-      SectionDividerSpaced()
-
-      WallpaperSetupView(
-        wallpaperType,
-        baseTheme,
-        MaterialTheme.wallpaper,
-        MaterialTheme.appColors.sentMessage,
-        MaterialTheme.appColors.sentQuote,
-        MaterialTheme.appColors.receivedMessage,
-        MaterialTheme.appColors.receivedQuote,
-        editColor = { name ->
-          editColor(name)
+      WallpaperPresetSelector(
+        selectedWallpaper = wallpaperType,
+        baseTheme = currentTheme.base,
+        currentColors = { type ->
+          ThemeManager.currentColors(type, null, null, appPrefs.themeOverrides.get())
         },
-        onTypeChange = { type ->
-          ThemeManager.saveAndApplyWallpaper(baseTheme, type)
-          saveThemeToDatabase(null)
-        },
-        firstSectionTitle = stringResource(MR.strings.settings_section_title_chat_colors),
+        onChooseType = onChooseType
       )
+
+      val type = MaterialTheme.wallpaper.type
+      if (type is WallpaperType.Image) {
+        SectionItemView(disabled = chatModel.remoteHostId != null, click = {
+          val defaultActiveTheme = ThemeManager.defaultActiveTheme(appPrefs.themeOverrides.get())
+          ThemeManager.saveAndApplyWallpaper(baseTheme, null)
+          ThemeManager.removeTheme(defaultActiveTheme?.themeId)
+          removeWallpaperFile(type.filename)
+          saveThemeToDatabase(null)
+        }) {
+          Text(
+            stringResource(MR.strings.theme_remove_image),
+            color = if (chatModel.remoteHostId == null) MaterialTheme.colors.primary else MaterialTheme.colors.secondary
+          )
+        }
+        SectionSpacer()
+      }
+
+      SectionView(stringResource(MR.strings.settings_section_title_chat_colors).uppercase()) {
+        WallpaperSetupView(
+          wallpaperType,
+          baseTheme,
+          MaterialTheme.wallpaper,
+          MaterialTheme.appColors.sentMessage,
+          MaterialTheme.appColors.sentQuote,
+          MaterialTheme.appColors.receivedMessage,
+          MaterialTheme.appColors.receivedQuote,
+          editColor = { name ->
+            editColor(name)
+          },
+          onTypeChange = { type ->
+            ThemeManager.saveAndApplyWallpaper(baseTheme, type)
+            saveThemeToDatabase(null)
+          },
+        )
+      }
       SectionDividerSpaced()
 
       CustomizeThemeColorsSection(currentTheme) { name ->
         editColor(name)
       }
 
-      SectionDividerSpaced()
+      SectionDividerSpaced(maxBottomPadding = false)
 
       val currentOverrides = remember(currentTheme) { ThemeManager.defaultActiveTheme(appPrefs.themeOverrides.get()) }
       val canResetColors = currentTheme.base.hasChangedAnyColor(currentOverrides)
       if (canResetColors) {
-        SectionView {
-          SectionItemView({
-            ThemeManager.resetAllThemeColors()
-            saveThemeToDatabase(null)
-          }) {
-            Text(generalGetString(MR.strings.reset_color), color = colors.primary)
-          }
+        SectionItemView({
+          ThemeManager.resetAllThemeColors()
+          saveThemeToDatabase(null)
+        }) {
+          Text(generalGetString(MR.strings.reset_color), color = colors.primary)
         }
-        SectionDividerSpaced()
+        SectionSpacer()
       }
 
       SectionView {
@@ -1015,7 +1007,7 @@ object AppearanceScope {
         SimpleXThemeOverride(currentColors()) {
           ChatThemePreview(theme, wallpaperImage, wallpaperType, previewBackgroundColor, previewTintColor)
         }
-        SectionDividerSpaced()
+        SectionSpacer()
       }
 
       var currentColor by remember { mutableStateOf(initialColor) }
@@ -1092,7 +1084,7 @@ object AppearanceScope {
       }) {
         Text(generalGetString(MR.strings.reset_single_color), color = colors.primary)
       }
-      SectionDividerSpaced()
+      SectionSpacer()
     }
   }
 
@@ -1196,82 +1188,75 @@ fun WallpaperSetupView(
   initialReceivedQuoteColor: Color,
   editColor: (ThemeColor) -> Unit,
   onTypeChange: (WallpaperType?) -> Unit,
-  firstSectionTitle: String? = null,
 ) {
-  val hasWallpaperSettings = wallpaperType is WallpaperType.Preset || wallpaperType is WallpaperType.Image
-
-  if (hasWallpaperSettings) {
-    SectionView(firstSectionTitle) {
-      if (wallpaperType is WallpaperType.Image) {
-        val state = remember(wallpaperType.scaleType, initialWallpaper?.type) { mutableStateOf(wallpaperType.scaleType ?: (initialWallpaper?.type as? WallpaperType.Image)?.scaleType ?: WallpaperScaleType.FILL) }
-        val values = remember {
-          WallpaperScaleType.entries.map { it to generalGetString(it.text) }
-        }
-        ExposedDropDownSettingRow(
-          stringResource(MR.strings.wallpaper_scale),
-          values,
-          state,
-          onSelected = { scaleType ->
-            onTypeChange(wallpaperType.copy(scaleType = scaleType))
-          }
-        )
-      }
-
-      if (wallpaperType is WallpaperType.Preset || (wallpaperType is WallpaperType.Image && wallpaperType.scaleType == WallpaperScaleType.REPEAT)) {
-        val state = remember(wallpaperType, initialWallpaper?.type?.scale) { mutableStateOf(wallpaperType.scale ?: initialWallpaper?.type?.scale ?: 1f) }
-        Row(Modifier.padding(horizontal = DEFAULT_PADDING), verticalAlignment = Alignment.CenterVertically) {
-          Text("${state.value}".substring(0, min("${state.value}".length, 4)), Modifier.width(50.dp))
-          Slider(
-            state.value,
-            valueRange = 0.5f..2f,
-            onValueChange = {
-              if (wallpaperType is WallpaperType.Preset) {
-                onTypeChange(wallpaperType.copy(scale = it))
-              } else if (wallpaperType is WallpaperType.Image) {
-                onTypeChange(wallpaperType.copy(scale = it))
-              }
-            }
-          )
-        }
-      }
-
-      val wallpaperBackgroundColor = initialWallpaper?.background ?: wallpaperType.defaultBackgroundColor(theme, MaterialTheme.colors.background)
-      SectionItemViewSpaceBetween({ editColor(ThemeColor.WALLPAPER_BACKGROUND) }) {
-        val title = generalGetString(MR.strings.color_wallpaper_background)
-        Text(title)
-        Icon(painterResource(MR.images.ic_circle_filled), title, tint = wallpaperBackgroundColor)
-      }
-      val wallpaperTintColor = initialWallpaper?.tint ?: wallpaperType.defaultTintColor(theme)
-      SectionItemViewSpaceBetween({ editColor(ThemeColor.WALLPAPER_TINT) }) {
-        val title = generalGetString(MR.strings.color_wallpaper_tint)
-        Text(title)
-        Icon(painterResource(MR.images.ic_circle_filled), title, tint = wallpaperTintColor)
-      }
+  if (wallpaperType is WallpaperType.Image) {
+    val state = remember(wallpaperType.scaleType, initialWallpaper?.type) { mutableStateOf(wallpaperType.scaleType ?: (initialWallpaper?.type as? WallpaperType.Image)?.scaleType ?: WallpaperScaleType.FILL) }
+    val values = remember {
+      WallpaperScaleType.entries.map { it to generalGetString(it.text) }
     }
-    SectionDividerSpaced()
+    ExposedDropDownSettingRow(
+      stringResource(MR.strings.wallpaper_scale),
+      values,
+      state,
+      onSelected = { scaleType ->
+        onTypeChange(wallpaperType.copy(scaleType = scaleType))
+      }
+    )
   }
 
-  SectionView(if (!hasWallpaperSettings) firstSectionTitle else null) {
-    SectionItemViewSpaceBetween({ editColor(ThemeColor.SENT_MESSAGE) }) {
-      val title = generalGetString(MR.strings.color_sent_message)
-      Text(title)
-      Icon(painterResource(MR.images.ic_circle_filled), title, tint = initialSentColor)
+  if (wallpaperType is WallpaperType.Preset || (wallpaperType is WallpaperType.Image && wallpaperType.scaleType == WallpaperScaleType.REPEAT)) {
+    val state = remember(wallpaperType, initialWallpaper?.type?.scale) { mutableStateOf(wallpaperType.scale ?: initialWallpaper?.type?.scale ?: 1f) }
+    Row(Modifier.padding(horizontal = DEFAULT_PADDING), verticalAlignment = Alignment.CenterVertically) {
+      Text("${state.value}".substring(0, min("${state.value}".length, 4)), Modifier.width(50.dp))
+      Slider(
+        state.value,
+        valueRange = 0.5f..2f,
+        onValueChange = {
+          if (wallpaperType is WallpaperType.Preset) {
+            onTypeChange(wallpaperType.copy(scale = it))
+          } else if (wallpaperType is WallpaperType.Image) {
+            onTypeChange(wallpaperType.copy(scale = it))
+          }
+        }
+      )
     }
-    SectionItemViewSpaceBetween({ editColor(ThemeColor.SENT_QUOTE) }) {
-      val title = generalGetString(MR.strings.color_sent_quote)
+  }
+
+  if (wallpaperType is WallpaperType.Preset || wallpaperType is WallpaperType.Image) {
+    val wallpaperBackgroundColor = initialWallpaper?.background ?: wallpaperType.defaultBackgroundColor(theme, MaterialTheme.colors.background)
+    SectionItemViewSpaceBetween({ editColor(ThemeColor.WALLPAPER_BACKGROUND) }) {
+      val title = generalGetString(MR.strings.color_wallpaper_background)
       Text(title)
-      Icon(painterResource(MR.images.ic_circle_filled), title, tint = initialSentQuoteColor)
+      Icon(painterResource(MR.images.ic_circle_filled), title, tint = wallpaperBackgroundColor)
     }
-    SectionItemViewSpaceBetween({ editColor(ThemeColor.RECEIVED_MESSAGE) }) {
-      val title = generalGetString(MR.strings.color_received_message)
+    val wallpaperTintColor = initialWallpaper?.tint ?: wallpaperType.defaultTintColor(theme)
+    SectionItemViewSpaceBetween({ editColor(ThemeColor.WALLPAPER_TINT) }) {
+      val title = generalGetString(MR.strings.color_wallpaper_tint)
       Text(title)
-      Icon(painterResource(MR.images.ic_circle_filled), title, tint = initialReceivedColor)
+      Icon(painterResource(MR.images.ic_circle_filled), title, tint = wallpaperTintColor)
     }
-    SectionItemViewSpaceBetween({ editColor(ThemeColor.RECEIVED_QUOTE) }) {
-      val title = generalGetString(MR.strings.color_received_quote)
-      Text(title)
-      Icon(painterResource(MR.images.ic_circle_filled), title, tint = initialReceivedQuoteColor)
-    }
+    SectionSpacer()
+  }
+
+  SectionItemViewSpaceBetween({ editColor(ThemeColor.SENT_MESSAGE) }) {
+    val title = generalGetString(MR.strings.color_sent_message)
+    Text(title)
+    Icon(painterResource(MR.images.ic_circle_filled), title, tint = initialSentColor)
+  }
+  SectionItemViewSpaceBetween({ editColor(ThemeColor.SENT_QUOTE) }) {
+    val title = generalGetString(MR.strings.color_sent_quote)
+    Text(title)
+    Icon(painterResource(MR.images.ic_circle_filled), title, tint = initialSentQuoteColor)
+  }
+  SectionItemViewSpaceBetween({ editColor(ThemeColor.RECEIVED_MESSAGE) }) {
+    val title = generalGetString(MR.strings.color_received_message)
+    Text(title)
+    Icon(painterResource(MR.images.ic_circle_filled), title, tint = initialReceivedColor)
+  }
+  SectionItemViewSpaceBetween({ editColor(ThemeColor.RECEIVED_QUOTE) }) {
+    val title = generalGetString(MR.strings.color_received_quote)
+    Text(title)
+    Icon(painterResource(MR.images.ic_circle_filled), title, tint = initialReceivedQuoteColor)
   }
 }
 

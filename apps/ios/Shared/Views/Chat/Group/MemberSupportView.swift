@@ -205,7 +205,7 @@ struct MemberSupportView: View {
             } else if member.memberPending {
                 return member.memberStatus.text
             } else {
-                return LocalizedStringKey(member.memberRole.text(isChannel: groupInfo.isChannel))
+                return LocalizedStringKey(member.memberRole.text)
             }
         }
 

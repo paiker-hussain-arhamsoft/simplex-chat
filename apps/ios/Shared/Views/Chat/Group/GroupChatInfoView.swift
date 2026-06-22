@@ -244,12 +244,6 @@ struct GroupChatInfoView: View {
                         }
                     }
 
-                    if groupInfo.useRelays && groupInfo.isOwner {
-                        Section(header: Text("Advanced options").foregroundColor(theme.colors.secondary)) {
-                            channelWebAccessButton()
-                        }
-                    }
-
                     if developerTools {
                         Section(header: Text("For console").foregroundColor(theme.colors.secondary)) {
                             infoRow("Local name", chat.chatInfo.localDisplayName)
@@ -581,7 +575,7 @@ struct GroupChatInfoView: View {
             } else {
                 let role = member.memberRole
                 if [.owner, .admin, .moderator, .observer].contains(role) {
-                    Text(member.memberRole.text(isChannel: groupInfo.isChannel))
+                    Text(member.memberRole.text)
                         .foregroundColor(theme.colors.secondary)
                 }
             }
@@ -660,17 +654,6 @@ struct GroupChatInfoView: View {
             groupLinkDestinationView()
         } label: {
             Label("Channel link", systemImage: "link")
-        }
-    }
-
-    private func channelWebAccessButton() -> some View {
-        let title: LocalizedStringKey = groupInfo.isChannel ? "Channel webpage" : "Group webpage"
-        return NavigationLink {
-            ChannelWebAccessView(groupInfo: $groupInfo)
-                .navigationBarTitle(title)
-                .navigationBarTitleDisplayMode(.large)
-        } label: {
-            Label(title, systemImage: "globe")
         }
     }
 
@@ -862,7 +845,7 @@ struct GroupChatInfoView: View {
         let label: LocalizedStringKey = groupInfo.useRelays ? "Delete channel?" : groupInfo.businessChat == nil ? "Delete group?" : "Delete chat?"
         return Alert(
             title: Text(label),
-            message: Text(chat.chatInfo.displayName + "\n\n") + deleteGroupAlertMessage(groupInfo),
+            message: deleteGroupAlertMessage(groupInfo),
             primaryButton: .destructive(Text("Delete")) {
                 Task {
                     do {
@@ -884,7 +867,7 @@ struct GroupChatInfoView: View {
     private func clearChatAlert() -> Alert {
         Alert(
             title: Text("Clear conversation?"),
-            message: Text(chat.chatInfo.displayName + "\n\n") + Text("All messages will be deleted - this cannot be undone! The messages will be deleted ONLY for you."),
+            message: Text("All messages will be deleted - this cannot be undone! The messages will be deleted ONLY for you."),
             primaryButton: .destructive(Text("Clear")) {
                 Task {
                     await clearChat(chat)
@@ -906,7 +889,7 @@ struct GroupChatInfoView: View {
         )
         return Alert(
             title: Text(titleLabel),
-            message: Text(chat.chatInfo.displayName + "\n\n") + Text(messageLabel),
+            message: Text(messageLabel),
             primaryButton: .destructive(Text("Leave")) {
                 Task {
                     await leaveGroup(chat.chatInfo.apiId)

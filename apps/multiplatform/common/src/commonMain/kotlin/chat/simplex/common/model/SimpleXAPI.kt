@@ -2289,7 +2289,7 @@ object ChatController {
     return when {
       r is API.Result && r.res is CR.GroupUpdated -> r.res.toGroup
       r is API.Error -> {
-        AlertManager.shared.showAlertMsg(generalGetString(errorTitle), "${r.err.string}")
+        AlertManager.shared.showAlertMsg(generalGetString(errorTitle), "$r.err")
         null
       }
       else -> {
@@ -6067,8 +6067,7 @@ data class GroupPreferences(
 
 @Serializable
 data class GroupPreference(
-  val enable: GroupFeatureEnabled,
-  val role: GroupMemberRole? = null,
+  val enable: GroupFeatureEnabled
 ) {
   val on: Boolean get() = enable == GroupFeatureEnabled.ON
 
